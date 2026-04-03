@@ -2,7 +2,7 @@
 
 A Python bridge between an [OpenEPaperLink](https://github.com/OpenEPaperLink/OpenEPaperLink) Access Point (BLE variant) and MQTT, with a live web UI for viewing and editing ESL (Electronic Shelf Label) tags.
 
-Originally written to display Bambu Lab P1S 3D printer filament/AMS data on e-paper shelf tags, but general enough to drive any OpenEPaperLink tag via JSON templates.
+Originally written to display Bambu Lab P2S 3D printer filament/AMS data on e-paper shelf tags, but general enough to drive any OpenEPaperLink tag via JSON templates.
 
 ---
 

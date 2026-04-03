@@ -1,0 +1,19 @@
+# Runtime data
+current/
+tag_images/
+open_epaper_link_tags.json
+open_epaper_link_tagtypes.json
+
+# Test/scratch files
+*.raw
+tag_test*.jpg
+json_test.json
+BBAA*.json
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# VS Code
+*.code-workspace

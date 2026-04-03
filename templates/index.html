@@ -1,0 +1,171 @@
+{% extends "base.html" %}
+{% from "macros.html" import render_tags_with_header with context %}
+{% block style %}
+.ws-status {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: red;
+    box-shadow: 0 0 4px red;
+    transition: background 0.3s, box-shadow 0.3s;
+}
+
+.ws-status.connected {
+    background: #00ff88;
+    box-shadow: 0 0 6px #00ff88;
+}
+
+.ws-status.reconnecting {
+    background: orange;
+    box-shadow: 0 0 6px orange;
+}
+
+.ws-status.disconnected {
+    background: red;
+    box-shadow: 0 0 6px red;
+}
+
+.ws-status.pulse {
+    animation: wsPulse 0.6s ease;
+}
+
+@keyframes wsPulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.6); }
+    100% { transform: scale(1); }
+}
+{% endblock %}
+{% block scripts %}
+{{ super() }}
+<script type="text/javascript">
+    var wsTimer = null
+    var ws = null
+
+    window.onload = (event) => {
+        console.log("Window is fully loaded");
+        startWS();
+    }
+
+    function startWS() {
+        // Create WebSocket connection.
+        console.log('Connecting Websocket')
+        const wsIndicator = document.getElementById("ws-status");
+        ws = new WebSocket("/ws");
+        ws.onopen = (event) => {
+            clearTimeout(wsTimer)
+            wsIndicator.classList.remove("disconnected", "reconnecting");
+            wsIndicator.classList.add("connected");
+            wsIndicator.title = "Connected";
+            console.log('%cWebsocket open', "color: green")
+        }
+        ws.onclose = (event) => {
+            wsIndicator.classList.remove("connected");
+            wsIndicator.classList.add("disconnected");
+            wsIndicator.title = "disconnected";
+            console.log("%cWebsocket closed", "color: red");
+            // restart websocket connection
+            wsTimer = setTimeout(function() {
+                wsIndicator.classList.remove("connected", "disconnected");
+                wsIndicator.classList.add("reconnecting");
+                wsIndicator.title = "reconnecting";
+                startWS();
+            }, 10000);
+        }
+        ws.onerror = (event) => {
+            console.log("%cWebSocket error: %s", "color: red", event);
+            ws.close()
+        }
+        // Listen for messages
+        ws.onmessage = (event) => {
+            wsIndicator.classList.add("pulse");
+            setTimeout(() => {
+                wsIndicator.classList.remove("pulse");
+            }, 600);
+            //console.log("Message from WS ", event.data);
+            var obj = JSON.parse(event.data)
+            switch(obj.type) {
+                case 'ping':
+                    wsSend("pong", true);
+                    break;
+                case 'sync_state':
+                    console.log("got sync tags ", obj.data);
+                    const container = document.getElementById("tag-container");
+                    container.outerHTML = obj.data.html;
+                    break;
+                case 'replace_modal':
+                    const modalEl = document.getElementById(`Modal-${obj.data.mac}`);
+                    if (modalEl) {
+                        const modalContent = modalEl.querySelector(".modal-content");
+                        // Parse returned HTML into DOM
+                        const temp = document.createElement("div");
+                        temp.innerHTML = obj.data.html;
+                        const newContent = temp.querySelector(".modal-content");
+                        if (modalContent && newContent) {
+                            modalContent.replaceWith(newContent);
+                        }
+                    }
+                    break;
+                case 'update_tag':
+                    const tagEl = document.getElementById(`tag-${obj.data.mac}`);
+                    if (tagEl) {
+                        tagEl.outerHTML = obj.data.html;
+                    } else {
+                        const container = document.getElementById("tag-container");
+                        if (container) container.insertAdjacentHTML('beforeend', obj.data.html);
+                    }
+                    break;
+                case 'remove_tag':
+                    const tagToRemove = document.getElementById(`tag-${obj.data.mac}`);
+                    if (tagToRemove) tagToRemove.remove();
+                    break;
+                default:
+                    console.log('%cobject type: %s not found', "color: red", obj.type)
+            }
+        }
+    }
+    
+    function wsSend(type, data) {
+        if (ws !== null) {
+            console.log("%cWS send: type: %s data: %s", "color: blue", type, data)
+            const msg = {
+                type: type,
+                payload: data,
+            };
+            ws.send(JSON.stringify(msg))
+        }
+    }
+    
+    document.addEventListener("change", function (event) {
+        if (event.target.name !== "template") return;
+        const form = event.target.closest("form");
+        const formData = new FormData(form);
+        const data = {};
+        formData.forEach((value, key) => {
+            data[key] = value;
+        });
+        wsSend("template_preview", data);
+    });
+    
+    document.addEventListener("submit", function (event) {
+        if (!event.target.classList.contains("ws-form")) return;
+        event.preventDefault();
+        const form = event.target;
+        const modalElement = form.closest(".modal");
+        const modal = bootstrap.Modal.getOrCreateInstance(modalElement);
+        const formData = new FormData(form);
+        const data = {};
+        formData.forEach((value, key) => {
+            data[key] = value;
+        });
+        modalElement.addEventListener("hidden.bs.modal", function handler() {
+            modalElement.removeEventListener("hidden.bs.modal", handler);
+            wsSend("form_submit", data);
+        });
+        modal.hide();
+    });
+
+</script>
+{% endblock %}
+{% block content %}
+{{ render_tags_with_header(names, ap_ip) }}
+{% endblock %}

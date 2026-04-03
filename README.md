@@ -49,9 +49,9 @@ usage: OpenEPaper.py [-h] [-A AP] [-F FOLDER] [-s SERVER] [-p PORT]
 OpenEPaper MQTT interface
 
 options:
-  -A, --ap        AP IP address (default: 192.168.1.164)
+  -A, --ap        AP IP address (default: 192.168.100.164)
   -F, --folder    Folder for tag images used by web server (default: tag_images)
-  -s, --server    MQTT broker address (default: 192.168.1.16)
+  -s, --server    MQTT broker address (default: 192.168.100.16)
   -p, --port      MQTT broker port (default: 1883)
   -l, --login     MQTT username (default: none)
   -pw,--password  MQTT password (default: none)
@@ -62,7 +62,7 @@ options:
 ### Minimal example
 
 ```bash
-python3 OpenEPaper.py -A 192.168.1.164 -s 192.168.1.10
+python3 OpenEPaper.py -A 192.168.100.164 -s 192.168.100.16
 ```
 
 The web UI is then available at `http://<host>:5000`.
@@ -85,7 +85,7 @@ The web UI is then available at `http://<host>:5000`.
 ### Example — update an AMS tag from the command line
 
 ```bash
-mosquitto_pub -h 192.168.1.10 \
+mosquitto_pub -h 192.168.100.16 \
   -t "/openepaper/command/AMS1/vars" \
   -m '{"pct": "75", "color": "red", "fil": "PLA", "type": "Bambu", "name": "AMS1"}'
 ```

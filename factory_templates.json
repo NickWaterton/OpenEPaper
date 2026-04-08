@@ -1,0 +1,59 @@
+{
+  "Empty": [
+    {"text": [0, 0, "{name}", "Signika-SB.ttf", "black", 0, 15]},
+    {"vars": {"name": "Empty"}},
+    {"size": {"width": 250, "height": 128}}
+  ],
+  "AMS Tags": [
+    {"box":  [0, 0, 250, 70, "{in_use_col_bg}"]},
+    {"text": [0, 0, "{name}", "Signika-SB.ttf", "{fil_txt_col}", 0, 15]},
+    {"text": [250, 0, "{type}", "Signika-SB.ttf", "{fil_txt_col}", 2, 15]},
+    {"text": [125, 15, "{fil}", "Signika-SB.ttf", "{fil_txt_col}", 1, 50]},
+    {"rbox": [-10, 80, 90, 58, 10, "black"]},
+    {"rbox": [100, 80, 180, 58, 10, "red"]},
+    {"text": [5, 90, "{color}", "Signika-SB.ttf", "white", 0, 20]},
+    {"text": [245, 90, "{pct}%", "Signika-SB.ttf", "white", 2, 20]},
+    {"bars": [115, 90, 80, 20, "white", "{pct}"]},
+    {"vars": {"pct": "100", "color": "white", "fil": "PLA", "type": "?", "name": "AMS", "in_use_col_bg": "white", "fil_txt_col": "black"}},
+    {"size": {"width": 250, "height": 128}}
+  ],
+  "AMS Tags 1": [
+    {"text": [250, 10, "{fil}", "fonts/calibrib100", "black", 1, 100]},
+    {"rbox": [-20, 160, 180, 116, 20, "black"]},
+    {"rbox": [200, 160, 360, 116, 20, "red"]},
+    {"text": [10, 180, "{color}", "fonts/calibrib40", "white", 0, 40]},
+    {"text": [490, 180, "{pct}%", "fonts/calibrib40", "white", 2, 40]},
+    {"bars": [230, 180, 160, 40, "white", "{pct}"]},
+    {"vars": {"pct": "100", "color": "white", "fil": "PLA"}},
+    {"size": {"width": 500, "height": 256}}
+  ],
+  "AMS Tags 2": [
+    {"box":  [0, 0, 250, 70, "{in_use_col_bg}"]},
+    {"text": [0, 0, "{name}", "fonts/calibrib15", "{fil_txt_col}", 0, 15]},
+    {"text": [250, 0, "{type}", "fonts/calibrib15", "{fil_txt_col}", 2, 15]},
+    {"text": [125, 25, "{fil}", "fonts/calibrib50", "{fil_txt_col}", 1, 50]},
+    {"rbox": [-10, 80, 90, 58, 10, "black"]},
+    {"rbox": [100, 80, 180, 58, 10, "red"]},
+    {"text": [5, 90, "{color}", "fonts/calibrib20", "white", 0, 20]},
+    {"text": [245, 90, "{pct}%", "fonts/calibrib20", "white", 2, 20]},
+    {"bars": [115, 90, 80, 20, "white", "{pct}"]},
+    {"vars": {"pct": "100", "color": "white", "fil": "PLA", "type": "?", "name": "AMS", "in_use_col_bg": "white", "fil_txt_col": "black"}},
+    {"size": {"width": 250, "height": 128}}
+  ],
+  "Rack Tags": [
+    {"text": [0, 0, "{name}", "fonts/Signika-SB.ttf", "black", 0, 15]},
+    {"text": [125, 15, "{txt}", "fonts/Signika-SB.ttf", "black", 1, 50]},
+    {"box":  [0, 80, 250, 58, "red"]},
+    {"text": [250, 90, "{type}", "fonts/Signika-SB.ttf", "white", 2, 20]},
+    {"vars": {"name": "Rack", "txt": "Open Racks", "type": "Sindoh PLA"}},
+    {"size": {"width": 250, "height": 128}}
+  ],
+  "Rack Tags BWRY": [
+    {"text": [0, 0, "{name}", "fonts/Signika-SB.ttf", "black", 0, 15]},
+    {"text": [125, 15, "{txt}", "fonts/Signika-SB.ttf", "black", 1, 50]},
+    {"box":  [0, 80, 250, 58, "yellow"]},
+    {"text": [250, 90, "{type}", "fonts/Signika-SB.ttf", "black", 2, 20]},
+    {"vars": {"name": "Rack", "txt": "Open Racks", "type": "Sindoh PLA"}},
+    {"size": {"width": 250, "height": 128}}
+  ]
+}

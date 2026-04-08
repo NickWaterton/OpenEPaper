@@ -10,7 +10,8 @@ Originally written to display Bambu Lab P2S 3D printer filament/AMS data on e-pa
 
 - **MQTT integration** — subscribes to command topics so any home automation system (e.g. Home Assistant) can push template variable updates to tags
 - **WebSocket-driven web UI** — live view of all tags; click any tag to edit its template variables; updates only the changed tag in the browser (no full-page refresh)
-- **JSON template engine** — define tag layouts using the [OEPL JSON designer](https://atc1441.github.io/oepl_json_designer/); templates scale automatically to the actual tag resolution
+- **Visual template designer** — built-in Fabric.js editor for creating and editing OEPL JSON templates; no external tools needed
+- **JSON template engine** — templates scale automatically to the actual tag resolution; user templates saved to `user_templates.json`
 - **Multi-colour support** — handles standard BWR (Black/White/Red) tags and Wolink BWRY (Black/White/Red/Yellow) tags
 - **AP WebSocket listener** — receives real-time tag check-in events from the AP; auto-initialises new tags
 - **Persistent tag database** — saves tag state to `open_epaper_link_tags.json` so it survives restarts
@@ -100,12 +101,93 @@ Open `http://<host>:5000` in a browser.
 - Click a tag to open an edit modal — change the template or any variable value
 - Changes are sent via WebSocket and immediately uploaded to the AP
 - A WebSocket status indicator (top-left) shows connection state
+- Click **Template Designer** to open the visual editor
+
+---
+
+## Template Designer
+
+Open `http://<host>:5000/editor` or click the **Template Designer** button in the tag view.
+
+### Overview
+
+The designer is a full visual editor for OEPL JSON templates. Changes are reflected in the JSON panel in real time. Templates are saved server-side and immediately available to all tags.
+
+Factory templates (marked ★) are read-only. All user-created templates are saved to `user_templates.json`.
+
+### Toolbar
+
+| Control | Description |
+|---|---|
+| Template selector | Choose which template to edit |
+| **New** | Create a new template (starts as a copy of the current canvas) |
+| **Save** | Save the current template |
+| **Reset** | Discard unsaved changes and reload the last saved state |
+| **Delete** | Delete the selected user template |
+| Element buttons | Add a new element of that type to the canvas |
+| Size / × / Apply | Set the design canvas size (width × height in pixels) |
+| Rot | Tag display rotation (0°/90°/180°/270°) |
+| ▲ / ▼ | Move the selected element forward/backward one layer |
+| Delete | Remove the selected element |
+
+### Element types
+
+| Type | Description |
+|---|---|
+| **Text** | Single-line text. Supports variable substitution (`{varname}`), font, size, colour, alignment, optional background colour |
+| **Box** | Filled rectangle with optional border (border is inset) |
+| **RBox** | Rounded rectangle with corner radius and optional border |
+| **Bars** | Progress bar made from repeated box segments. Driven by a numeric variable (0–100). Direction: left-to-right or right-to-left |
+| **Line** | Single-pixel straight line between two points |
+| **Triangle** | Filled triangle defined by three vertex points |
+| **Circle** | Circle defined by centre point and radius, with optional border |
+| **Image** | JPEG image stored on the AP filesystem. Pick a local file or an existing AP image; the editor previews it at the chosen size. On save the image is resized and uploaded to the AP automatically |
+| **Textbox** | Multi-line text area with word wrap, line height, and alignment |
+
+### Working with elements
+
+- **Drag** to move; **corner handles** to resize
+- Select an element to edit its properties in the **Element Properties** panel on the right
+- For **line** and **triangle**, drag the blue endpoint handles directly on the canvas, or edit X/Y coordinates in the properties panel
+- For **circle** and **text**, only uniform scaling is available (no stretching)
+- The **Variable Defaults** panel lets you define template variables and set preview values used while designing
+
+### Variables
+
+Any text value in a template can reference a variable using `{varname}` syntax. Variables and their default values are defined in the `vars` entry of the template. When a tag checks in, the server substitutes live values (e.g. from MQTT) before uploading.
+
+Add a variable with the **+ Add** button in the Variable Defaults panel. Delete it with the **×** button next to it.
+
+### Images
+
+1. Add an **Image** element to the canvas
+2. In the Element Properties panel, click **Pick file…** to select a local JPEG/PNG, or choose an existing file from the **AP files** dropdown
+3. The image loads as a live preview — drag and resize it on the canvas
+4. Set the exact pixel dimensions in the **Width** / **Height** fields
+5. **Save** the template — the server automatically:
+   - Resizes the image to the specified pixel dimensions using PIL
+   - Saves a local copy in `template_images/`
+   - Uploads the resized image to the AP filesystem as `{template_name}_{index}.jpg`
+   - Writes the AP filename into the saved template JSON
+
+> **Note:** Image files on the AP are named `{template_name}_{index}.jpg` (e.g. `MyTemplate_0.jpg`). If you rename a template, re-save it to regenerate and re-upload the image files with the new name.
+
+### JSON panel
+
+The raw OEPL JSON is shown in the panel on the right and updates as you edit. You can also edit the JSON directly and click **Apply** to load it onto the canvas.
 
 ---
 
 ## Templates
 
-Templates are defined in the `TEMPLATES` dict at the top of `OpenEPaper.py`. Each template is a list of OEPL JSON drawing commands plus a `vars` dict of default variable values and a `size` dict specifying the design resolution (the engine scales to the actual tag size automatically).
+Templates are stored in two places:
+
+| File | Contents |
+|---|---|
+| `factory_templates.json` | Shipped read-only templates (marked ★ in the designer) |
+| `user_templates.json` | Templates created or edited in the designer |
+
+At startup both files are merged. Tags reference templates by name; the engine scales all coordinates to the actual tag resolution automatically.
 
 Built-in templates:
 
@@ -133,6 +215,7 @@ Built-in templates:
 - An [OpenEPaperLink](https://github.com/NickWaterton/OpenEPaperLink) AP with BLE support (the NickWaterton fork)
 - Tags must be set to content mode **19 (JSON template)** for template-driven updates
 - The AP must be reachable over HTTP and WebSocket from the machine running this script
+- The AP must expose the SPIFFSEditor at `/edit` (standard in the firmware) for image upload support
 
 ---
 

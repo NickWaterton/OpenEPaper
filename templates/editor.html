@@ -1,0 +1,1257 @@
+{% extends "base.html" %}
+{% block style %}
+#canvas-wrapper {
+    display: inline-block;
+    border: 2px solid #495057;
+    background: #888;
+    padding: 4px;
+    line-height: 0;  /* prevents gap below canvas */
+}
+.prop-row { margin-bottom: 0.35rem; }
+.vars-row { display: flex; gap: 4px; margin-bottom: 4px; align-items: center; }
+.color-swatch { width: 22px; height: 22px; border: 1px solid #888; border-radius: 3px; flex-shrink: 0; }
+{% endblock %}
+
+{% block content %}
+<div style="display:flex; flex-direction:column; height:100vh; overflow:hidden">
+
+  <!-- Toolbar — pinned, original Bootstrap row/col-auto structure preserved -->
+  <div class="container-fluid py-2" style="flex-shrink:0; border-bottom:1px solid #dee2e6">
+    <div class="row g-2 align-items-center flex-nowrap">
+
+      <div class="col-auto">
+        <select class="form-select form-select-sm" id="tmpl-select" style="min-width:160px"></select>
+      </div>
+
+      <div class="col-auto">
+        <div class="btn-group btn-group-sm">
+          <button class="btn btn-outline-primary"    id="btn-new"    title="Create new template (copies current layout)">New</button>
+          <button class="btn btn-outline-success"   id="btn-save"   title="Save template">Save</button>
+          <button class="btn btn-outline-secondary" id="btn-reset"  title="Reset to default / last saved state">Reset</button>
+          <button class="btn btn-outline-danger"    id="btn-delete" title="Delete template">Delete</button>
+        </div>
+      </div>
+
+      <div class="col-auto border-start ps-2">
+        <div class="btn-group btn-group-sm">
+          <button class="btn btn-outline-secondary" id="btn-add-text"   title="Add text element">+ Text</button>
+          <button class="btn btn-outline-secondary" id="btn-add-box"    title="Add filled rectangle">+ Box</button>
+          <button class="btn btn-outline-secondary" id="btn-add-rbox"   title="Add rounded rectangle">+ RBox</button>
+          <button class="btn btn-outline-secondary" id="btn-add-bars"   title="Add progress bar">+ Bars</button>
+          <button class="btn btn-outline-secondary" id="btn-add-line"   title="Add line">+ Line</button>
+          <button class="btn btn-outline-secondary" id="btn-add-tri"    title="Add triangle">+ Triangle</button>
+          <button class="btn btn-outline-secondary" id="btn-add-circle" title="Add circle">+ Circle</button>
+          <button class="btn btn-outline-secondary" id="btn-add-image"   title="Add image">+ Image</button>
+          <button class="btn btn-outline-secondary" id="btn-add-textbox" title="Add text box (multi-line)">+ Textbox</button>
+        </div>
+      </div>
+
+      <div class="col-auto border-start ps-2 d-flex align-items-center gap-1">
+        <small class="text-muted">Size:</small>
+        <input type="number" class="form-control form-control-sm" id="inp-w" value="250" min="1" style="width:64px">
+        <small class="text-muted">×</small>
+        <input type="number" class="form-control form-control-sm" id="inp-h" value="128" min="1" style="width:64px">
+        <button class="btn btn-sm btn-outline-secondary" id="btn-resize">Apply</button>
+        <small class="text-muted ms-1">Rot:</small>
+        <select class="form-select form-select-sm" id="inp-rotate" style="width:68px">
+          <option value="0">0°</option>
+          <option value="1">90°</option>
+          <option value="2">180°</option>
+          <option value="3">270°</option>
+        </select>
+      </div>
+
+      <div class="col-auto border-start ps-2">
+        <div class="btn-group btn-group-sm">
+          <button class="btn btn-outline-secondary" id="btn-layer-up"   title="Move element forward one layer">▲</button>
+          <button class="btn btn-outline-secondary" id="btn-layer-down" title="Move element back one layer">▼</button>
+          <button class="btn btn-outline-danger"    id="btn-del-elem"   title="Delete selected element (Del)">Delete</button>
+        </div>
+      </div>
+
+      <div class="col-auto ms-auto">
+        <a href="/" class="btn btn-sm btn-outline-secondary">← Tags</a>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Working area — scrolls independently, page never gets a scrollbar -->
+  <div style="flex:1; overflow:auto; padding:0.5rem; min-height:0">
+    <div class="d-flex flex-nowrap align-items-start gap-2">
+
+      <!-- Canvas -->
+      <div style="flex-shrink:0">
+        <div id="canvas-wrapper">
+          <canvas id="c"></canvas>
+        </div>
+        <div class="mt-1">
+          <small class="text-muted">Drag · Handles to resize · Click empty to deselect</small>
+        </div>
+      </div>
+
+      <!-- Properties + Vars -->
+      <div style="flex-shrink:0; width:270px">
+
+        <!-- Element properties -->
+        <div class="card mb-2">
+          <div class="card-header py-1"><small class="fw-semibold">Element Properties</small></div>
+          <div class="card-body py-2 px-3" id="props-panel">
+            <small class="text-muted">Select an element to edit its properties</small>
+          </div>
+        </div>
+
+        <!-- Variable defaults -->
+        <div class="card">
+          <div class="card-header py-1 d-flex justify-content-between align-items-center">
+            <small class="fw-semibold">Variable Defaults</small>
+            <button class="btn btn-outline-secondary btn-sm py-0 px-1" id="btn-add-var" style="font-size:0.7rem">+ Add</button>
+          </div>
+          <div class="card-body py-2 px-3" id="vars-panel">
+            <small class="text-muted">No variables</small>
+          </div>
+        </div>
+      </div>
+
+      <!-- JSON panel -->
+      <div style="flex:1; min-width:260px">
+        <div class="card">
+          <div class="card-header py-1 d-flex justify-content-between align-items-center">
+            <small class="fw-semibold">Template JSON</small>
+            <button class="btn btn-outline-primary btn-sm py-0 px-2" id="btn-apply-json" style="font-size:0.7rem">Apply</button>
+          </div>
+          <div class="card-body p-1">
+            <textarea id="json-panel" class="form-control font-monospace" spellcheck="false"
+                      style="font-size:0.72rem; height:calc(100vh - 120px); resize:none; white-space:pre;"></textarea>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Signika:wght@600&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"></script>
+<script>
+'use strict';
+if (typeof fabric === 'undefined') {
+    document.body.innerHTML = '<div class="alert alert-danger m-4">Failed to load Fabric.js from CDN. Check your internet connection or browser console.</div>';
+    throw new Error('fabric.js not loaded');
+}
+
+// ── Constants ────────────────────────────────────────────────────────────────
+
+const OEPL_COLORS = {
+    white:'#FFFFFF', black:'#000000', red:'#FF0000', yellow:'#FFFF00',
+    lightgray:'#D3D3D3', darkgray:'#A9A9A9', pink:'#FFC0CB', brown:'#A52A2A',
+    green:'#008000', blue:'#0000FF', orange:'#FFA500'
+};
+const VAR_COLOR = '#FF69B4';  // hot-pink placeholder for variable-named colours
+
+const FONTS = [
+    { label:'Signika SB (default)',  oepl:'Signika-SB.ttf',       css:'Signika, Calibri, Arial, sans-serif' },
+    { label:'Calibri Bold 15',       oepl:'fonts/calibrib15',      css:'"Calibri Bold",Calibri,Arial,sans-serif' },
+    { label:'Calibri Bold 20',       oepl:'fonts/calibrib20',      css:'"Calibri Bold",Calibri,Arial,sans-serif' },
+    { label:'Calibri Bold 30',       oepl:'fonts/calibrib30',      css:'"Calibri Bold",Calibri,Arial,sans-serif' },
+    { label:'Calibri Bold 40',       oepl:'fonts/calibrib40',      css:'"Calibri Bold",Calibri,Arial,sans-serif' },
+    { label:'Calibri Bold 50',       oepl:'fonts/calibrib50',      css:'"Calibri Bold",Calibri,Arial,sans-serif' },
+    { label:'Calibri Bold 80',       oepl:'fonts/calibrib80',      css:'"Calibri Bold",Calibri,Arial,sans-serif' },
+    { label:'Calibri Bold 100',      oepl:'fonts/calibrib100',     css:'"Calibri Bold",Calibri,Arial,sans-serif' },
+    { label:'Bahnschrift 20',        oepl:'fonts/bahnschrift20',   css:'Bahnschrift,"Franklin Gothic Medium",Arial,sans-serif' },
+    { label:'Bahnschrift 30',        oepl:'fonts/bahnschrift30',   css:'Bahnschrift,"Franklin Gothic Medium",Arial,sans-serif' },
+    { label:'Bahnschrift 70',        oepl:'fonts/bahnschrift70',   css:'Bahnschrift,"Franklin Gothic Medium",Arial,sans-serif' },
+];
+
+// ── State ────────────────────────────────────────────────────────────────────
+
+let allTemplates  = {};   // { name: { template:[...], factory:bool } }
+let currentName   = null;
+let canvas        = null;
+let apImageList   = null; // cached AP file list — fetched once, null = not yet loaded
+let tagW = 250, tagH = 128, dscale = 2;
+let varsState     = {};   // { varName: defaultValue }
+let isFactory     = false;
+let tagRotate     = 0;    // 0=0°, 1=90°, 2=180°, 3=270°
+
+// ── Colour helpers ────────────────────────────────────────────────────────────
+
+function resolveColor(c) {
+    if (c == null) return '#000000';
+    if (typeof c === 'number') return Object.values(OEPL_COLORS)[c] ?? '#000000';
+    if (typeof c === 'string' && c.startsWith('{')) {
+        const varVal = varsState[c.slice(1, -1)];
+        return varVal ? resolveColor(varVal) : VAR_COLOR;  // use default, fall back to pink
+    }
+    if (typeof c === 'string' && c.startsWith('#')) return c;
+    return OEPL_COLORS[c] ?? '#000000';
+}
+function resolveText(t) {
+    if (!t) return t;
+    return t.replace(/\{(\w+)\}/g, (m, k) => varsState[k] ?? m);
+}
+function isVarColor(c) { return typeof c === 'string' && c.startsWith('{'); }
+function fontCss(oeplFont) { return FONTS.find(f => f.oepl === oeplFont)?.css ?? 'Arial,sans-serif'; }
+
+// ── Canvas init ───────────────────────────────────────────────────────────────
+
+function initCanvas(w, h) {
+    tagW = w; tagH = h;
+    dscale = Math.min(600 / w, 400 / h, 3);
+    const dispW = Math.round(w * dscale);
+    const dispH = Math.round(h * dscale);
+
+    if (canvas) {
+        canvas.setWidth(dispW);
+        canvas.setHeight(dispH);
+        canvas.clear();
+        canvas.backgroundColor = '#FFFFFF';
+        canvas.renderAll();
+    } else {
+        canvas = new fabric.Canvas('c', {
+            width: dispW, height: dispH, backgroundColor: '#FFFFFF',
+        });
+        canvas.on('selection:created', e => renderProps(e.selected?.[0]));
+        canvas.on('selection:updated', e => renderProps(e.selected?.[0]));
+        canvas.on('selection:cleared', () => renderProps(null));
+        canvas.on('object:modified', e => { renderProps(e.target); scheduleJsonUpdate(); });
+        canvas.on('object:moving',   e => renderProps(e.target));
+        canvas.on('object:scaling',  e => renderProps(e.target));
+        // Remove rotation handle from every object as OEPL doesn't support per-element rotation
+        canvas.on('object:added', e => {
+            if (e.target?.controls?.mtr) e.target.setControlsVisibility({ mtr: false });
+        });
+    }
+    document.getElementById('inp-w').value = w;
+    document.getElementById('inp-h').value = h;
+}
+
+// ── Element colour helper ─────────────────────────────────────────────────────
+
+function applyColorToObj(obj, color) {
+    const fc = resolveColor(color);
+    if (obj._oepl?.type === 'line') obj.set({ stroke: fc });
+    else                            obj.set({ fill: fc });
+}
+
+// ── Coordinate helpers for Polygon / Polyline ─────────────────────────────────
+
+function getPolyCoords(obj, s) {
+    // calcTransformMatrix() translates by the bounding-box centre (pathOffset in point-space)
+    // so subtract pathOffset first to get centre-relative local coords, then transform
+    const m = obj.calcTransformMatrix();
+    return obj.points.flatMap(p => {
+        const a = fabric.util.transformPoint(
+            { x: p.x - obj.pathOffset.x, y: p.y - obj.pathOffset.y }, m
+        );
+        return [Math.round(a.x/s), Math.round(a.y/s)];
+    });
+}
+
+// Draggable vertex control for fabric.Polygon / fabric.Polyline (standard Fabric pattern)
+function makePolyEndpointControl(pointIndex) {
+    return new fabric.Control({
+        cursorStyle: 'crosshair',
+        actionName: 'endpointMove',
+        positionHandler(dim, finalMatrix, obj) {
+            const pt = obj.points[pointIndex];
+            return fabric.util.transformPoint(
+                { x: pt.x - obj.pathOffset.x, y: pt.y - obj.pathOffset.y },
+                finalMatrix
+            );
+        },
+        actionHandler(eventData, transform, absX, absY) {
+            const poly = transform.target;
+            const local = poly.toLocalPoint(new fabric.Point(absX, absY), 'center', 'center');
+            const sw = poly.strokeWidth || 0;
+            const scaleX = poly.width  > 0 ? (poly.width  + sw) / poly.width  : 1;
+            const scaleY = poly.height > 0 ? (poly.height + sw) / poly.height : 1;
+            poly.points[pointIndex] = {
+                x: local.x * scaleX + poly.pathOffset.x,
+                y: local.y * scaleY + poly.pathOffset.y,
+            };
+            // Recalculate bounding box
+            const xs = poly.points.map(p => p.x), ys = poly.points.map(p => p.y);
+            const minX = Math.min(...xs), maxX = Math.max(...xs);
+            const minY = Math.min(...ys), maxY = Math.max(...ys);
+            poly.set({
+                width:      maxX - minX,
+                height:     maxY - minY,
+                pathOffset: new fabric.Point((minX + maxX) / 2, (minY + maxY) / 2),
+                left:       minX,
+                top:        minY,
+            });
+            poly.setCoords();
+            return true;
+        },
+        render(ctx, left, top) {
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(left, top, 5, 0, Math.PI * 2);
+            ctx.fillStyle = '#0d6efd';
+            ctx.fill();
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+            ctx.restore();
+        },
+        cornerSize: 10,
+    });
+}
+
+// ── OEPL → Fabric ─────────────────────────────────────────────────────────────
+
+function loadOepl(templateData) {
+    const sizeE   = templateData.find(e => 'size'   in e);
+    const varsE   = templateData.find(e => 'vars'   in e);
+    const rotateE = templateData.find(e => 'rotate' in e);
+    initCanvas(sizeE?.size.width ?? 250, sizeE?.size.height ?? 128);
+    tagRotate = rotateE?.rotate ?? 0;
+    const rotSel = document.getElementById('inp-rotate');
+    if (rotSel) rotSel.value = tagRotate;
+    varsState = varsE ? { ...varsE.vars } : {};
+    renderVars();
+    for (const item of templateData) {
+        if ('vars' in item || 'size' in item || 'rotate' in item || 'template' in item) continue;
+        // Skip sidecar keys (prefixed _) to find the OEPL element key
+        const entry = Object.entries(item).find(([k]) => !k.startsWith('_'));
+        if (!entry) continue;
+        const [type, params] = entry;
+        if (type === 'image') {
+            // Reconstruct params object with sidecar fields for preview loading
+            const augmented = Array.isArray(params) ? [...params] : params;
+            augmented._srcId      = item._src_id ?? null;
+            augmented._imgW       = item._img_w  ?? 60;
+            augmented._imgH       = item._img_h  ?? 40;
+            // If we have a staged source, use it; otherwise try to load from AP
+            if (item._src_id) {
+                augmented._previewUrl = `/api/images/src/${item._src_id}`;
+            } else if (params[0]) {
+                augmented._previewUrl = `/api/images/ap_proxy/${encodeURIComponent(params[0])}`;
+            }
+            addElement(type, augmented);
+        } else {
+            addElement(type, params);
+        }
+    }
+    canvas.renderAll();
+    updateJsonPanel();
+}
+
+function addElement(type, params, andSelect = false) {
+    const s = dscale;
+    let obj = null;
+
+    if (type === 'box') {
+        const [x, y, w, h, color='black', bordercolor=null, borderwidth=0] = params ?? [10, 10, 80, 30, 'black'];
+        const sw = borderwidth * s;
+        obj = new fabric.Rect({
+            left: x*s, top: y*s, width: w*s - sw, height: h*s - sw,
+            fill: resolveColor(color),
+            stroke: borderwidth > 0 ? resolveColor(bordercolor) : null,
+            strokeWidth: sw, strokeUniform: true,
+            _oepl: { type:'box', color, bordercolor: bordercolor ?? null, borderwidth }
+        });
+
+    } else if (type === 'rbox') {
+        const [x, y, w, h, r=5, color='black', bordercolor=null, borderwidth=0] = params ?? [10, 10, 80, 30, 5, 'black'];
+        const sw = borderwidth * s;
+        obj = new fabric.Rect({
+            left: x*s, top: y*s, width: w*s - sw, height: h*s - sw,
+            rx: r*s, ry: r*s,
+            fill: resolveColor(color),
+            stroke: borderwidth > 0 ? resolveColor(bordercolor) : null,
+            strokeWidth: sw, strokeUniform: true,
+            _oepl: { type:'rbox', color, radius:r, bordercolor: bordercolor ?? null, borderwidth }
+        });
+
+    } else if (type === 'text') {
+        const [x, y, text='Text', font='Signika-SB.ttf', color='black', align=0, size=20, bgcolor=null]
+            = params ?? [10, 10, 'Text', 'Signika-SB.ttf', 'black', 0, 20];
+        const originX = ['left','center','right'][align] ?? 'left';
+        const origText = String(text);
+        obj = new fabric.Text(resolveText(origText) || ' ', {
+            left: x*s, top: y*s, fontSize: size*s,
+            fill: resolveColor(color), originX, fontFamily: fontCss(font),
+            backgroundColor: bgcolor ? resolveColor(bgcolor) : '',
+            lockUniScaling: true,   // OEPL text has a single size param — no x/y stretch
+            _oepl: { type:'text', font, color, align, origText, bgcolor: bgcolor ?? null }
+        });
+        obj.setControlsVisibility({ mt: false, mb: false, ml: false, mr: false });
+
+    } else if (type === 'bars') {
+        const [x, y, w, h, color='white', valueVar='{pct}', direction=0]
+            = params ?? [10, 10, 80, 15, 'white', '{pct}', 0];
+        obj = new fabric.Rect({
+            left: x*s, top: y*s, width: w*s, height: h*s,
+            fill: resolveColor(color), opacity: 0.75,
+            stroke: '#666', strokeWidth: 1, strokeDashArray: [4, 3],
+            _oepl: { type:'bars', color, valueVar, direction }
+        });
+
+    } else if (type === 'line') {
+        const [x1=10, y1=40, x2=100, y2=40, color='black'] = params ?? [];
+        // Use Polyline (2-point polygon) — simpler/correct coord handling than fabric.Line
+        obj = new fabric.Polyline(
+            [{ x: x1*s, y: y1*s }, { x: x2*s, y: y2*s }],
+            { fill: 'transparent', stroke: resolveColor(color), strokeWidth: 2,
+              hasBorders: false, _oepl: { type:'line', color } }
+        );
+        obj.controls = {
+            p1: makePolyEndpointControl(0),
+            p2: makePolyEndpointControl(1),
+        };
+
+    } else if (type === 'triangle') {
+        const [x1=10, y1=60, x2=60, y2=10, x3=110, y3=60, color='black'] = params ?? [];
+        obj = new fabric.Polygon(
+            [{ x: x1*s, y: y1*s }, { x: x2*s, y: y2*s }, { x: x3*s, y: y3*s }],
+            { fill: resolveColor(color), strokeWidth: 0, hasBorders: false,
+              _oepl: { type:'triangle', color } }
+        );
+        // Individual vertex handles — same pattern as line
+        obj.controls = {
+            p1: makePolyEndpointControl(0),
+            p2: makePolyEndpointControl(1),
+            p3: makePolyEndpointControl(2),
+        };
+
+    } else if (type === 'circle') {
+        const [x=60, y=40, radius=20, color='black', bordercolor=null, borderwidth=0] = params ?? [];
+        const sw = borderwidth * s;
+        obj = new fabric.Circle({
+            left: x*s, top: y*s, radius: radius*s - sw/2,
+            fill: resolveColor(color),
+            stroke: borderwidth > 0 ? resolveColor(bordercolor) : null,
+            strokeWidth: sw, strokeUniform: true,
+            originX: 'center', originY: 'center',
+            lockUniScaling: true,   // OEPL only has a single radius — no ellipses
+            _oepl: { type:'circle', color, bordercolor: bordercolor ?? null, borderwidth }
+        });
+        // Hide mid-side handles so only the corner handles (uniform scale) are available
+        obj.setControlsVisibility({ mt: false, mb: false, ml: false, mr: false });
+
+    } else if (type === 'image') {
+        const [filename='', x=10, y=10] = params ?? [];
+        const srcId  = params?._srcId  ?? null;
+        const imgW   = params?._imgW   ?? 60;
+        const imgH   = params?._imgH   ?? 40;
+        const previewUrl = params?._previewUrl ?? null;
+        // Start with a placeholder rect; swapped for fabric.Image once preview loads
+        obj = new fabric.Rect({
+            left: x*s, top: y*s, width: imgW*s, height: imgH*s,
+            fill: '#aaaaaa', opacity: 0.6,
+            stroke: '#555', strokeWidth: 1, strokeDashArray: [6, 3],
+            objectCaching: false,
+            _oepl: { type:'image', filename, srcId, imgW, imgH }
+        });
+        if (previewUrl) {
+            // Load preview asynchronously and swap the placeholder
+            const placeholder = obj;
+            fabric.Image.fromURL(previewUrl, (fImg) => {
+                if (!fImg) return;
+                const o = placeholder._oepl;
+                fImg.set({
+                    left: placeholder.left, top: placeholder.top,
+                    scaleX: (o.imgW * s) / fImg.width,
+                    scaleY: (o.imgH * s) / fImg.height,
+                    _oepl: { ...o },
+                    objectCaching: false,
+                });
+                if (fImg.controls?.mtr) fImg.setControlsVisibility({ mtr: false });
+                canvas.remove(placeholder);
+                canvas.add(fImg);
+                if (andSelect) canvas.setActiveObject(fImg);
+                canvas.renderAll();
+                scheduleJsonUpdate();
+            }, { crossOrigin: 'anonymous' });
+        }
+
+    } else if (type === 'textbox') {
+        const [x=10, y=10, w=120, h=40, text='Text', font='Signika-SB.ttf', color='black', lineHeight=1.2, align=0] = params ?? [];
+        const origText = String(text);
+        obj = new fabric.Textbox(resolveText(origText) || ' ', {
+            left: x*s, top: y*s, width: w*s,
+            fontSize: 16*s,
+            fill: resolveColor(color),
+            fontFamily: fontCss(font),
+            textAlign: ['left','center','right'][align] ?? 'left',
+            lineHeight,
+            _oepl: { type:'textbox', font, color, align, lineHeight, height: h, origText }
+        });
+    }
+
+    if (obj) {
+        canvas.add(obj);
+        if (andSelect) { canvas.setActiveObject(obj); canvas.renderAll(); }
+    }
+    return obj;
+}
+
+// ── Fabric → OEPL ────────────────────────────────────────────────────────────
+
+function objToParams(obj) {
+    const o = obj._oepl;
+    const s = dscale;
+    const x = Math.round(obj.left / s);
+    const y = Math.round(obj.top / s);
+    const w = Math.round((obj.width  * Math.abs(obj.scaleX)) / s);
+    const h = Math.round((obj.height * Math.abs(obj.scaleY)) / s);
+
+    if (o.type === 'box') {
+        const bw = o.borderwidth ?? 0;
+        const bx = Math.round(obj.left / s);
+        const by = Math.round(obj.top  / s);
+        const bw2 = Math.round((obj.width  * Math.abs(obj.scaleX) + obj.strokeWidth) / s);
+        const bh2 = Math.round((obj.height * Math.abs(obj.scaleY) + obj.strokeWidth) / s);
+        const p = [bx, by, bw2, bh2, o.color];
+        if (bw > 0) p.push(o.bordercolor ?? 'black', bw);
+        return ['box', p];
+    }
+    if (o.type === 'rbox') {
+        const bw = o.borderwidth ?? 0;
+        const bx = Math.round(obj.left / s);
+        const by = Math.round(obj.top  / s);
+        const bw2 = Math.round((obj.width  * Math.abs(obj.scaleX) + obj.strokeWidth) / s);
+        const bh2 = Math.round((obj.height * Math.abs(obj.scaleY) + obj.strokeWidth) / s);
+        const r = Math.max(0, Math.round((obj.rx * Math.abs(obj.scaleX)) / s));
+        const p = [bx, by, bw2, bh2, r, o.color];
+        if (bw > 0) p.push(o.bordercolor ?? 'black', bw);
+        return ['rbox', p];
+    }
+    if (o.type === 'text') {
+        const size = Math.max(1, Math.round((obj.fontSize * Math.abs(obj.scaleY)) / s));
+        const p = [x, y, o.origText ?? obj.text, o.font, o.color, o.align, size];
+        if (o.bgcolor) p.push(o.bgcolor);
+        return ['text', p];
+    }
+    if (o.type === 'bars') {
+        const p = [x, y, w, h, o.color, o.valueVar];
+        if (o.direction) p.push(o.direction);
+        return ['bars', p];
+    }
+    if (o.type === 'line') {
+        const [lx1,ly1,lx2,ly2] = getPolyCoords(obj, s);
+        return ['line', [lx1, ly1, lx2, ly2, o.color]];
+    }
+    if (o.type === 'triangle') {
+        const pts = getPolyCoords(obj, s);
+        return ['triangle', [...pts, o.color]];
+    }
+    if (o.type === 'circle') {
+        const r = Math.round((obj.radius * Math.abs(obj.scaleX) + obj.strokeWidth/2) / s);
+        const p = [Math.round(obj.left / s), Math.round(obj.top / s), r, o.color];
+        if (o.borderwidth > 0) p.push(o.bordercolor ?? 'black', o.borderwidth);
+        return ['circle', p];
+    }
+    if (o.type === 'image') {
+        // Real pixel dimensions = canvas size / dscale
+        const iw = Math.round((obj.width  * Math.abs(obj.scaleX)) / s);
+        const ih = Math.round((obj.height * Math.abs(obj.scaleY)) / s);
+        // Store srcId + pixel dims as sidecar so api_template can resize & upload
+        return ['image', [o.filename, x, y], { srcId: o.srcId, imgW: iw, imgH: ih }];
+    }
+    if (o.type === 'textbox') {
+        const tw = Math.round((obj.width  * Math.abs(obj.scaleX)) / s);
+        const th = Math.round((obj.height * Math.abs(obj.scaleY)) / s);
+        return ['textbox', [x, y, tw, th, o.origText ?? obj.text, o.font, o.color, o.lineHeight, o.align]];
+    }
+    return null;
+}
+
+function toOepl() {
+    const out = [];
+    for (const obj of canvas.getObjects()) {
+        if (!obj._oepl) continue;
+        const p = objToParams(obj);
+        if (!p) continue;
+        const entry = { [p[0]]: p[1] };
+        // Image sidecar: _src_id / _img_w / _img_h travel to server for resize+upload
+        if (p[0] === 'image' && p[2]) {
+            if (p[2].srcId) entry._src_id = p[2].srcId;
+            if (p[2].imgW)  entry._img_w  = p[2].imgW;
+            if (p[2].imgH)  entry._img_h  = p[2].imgH;
+        }
+        out.push(entry);
+    }
+    out.push({ vars: { ...varsState } });
+    out.push({ size: { width: tagW, height: tagH } });
+    if (tagRotate > 0) out.push({ rotate: tagRotate });
+    return out;
+}
+
+// ── Properties panel ──────────────────────────────────────────────────────────
+
+function colorWidget(prefix, currentColor) {
+    const isVar = isVarColor(currentColor);
+    const colorOpts = Object.keys(OEPL_COLORS).map(c =>
+        `<option value="${c}"${!isVar && currentColor===c?' selected':''}>${c}</option>`
+    ).join('');
+    const fixedStyle = isVar ? 'flex:1;display:none' : 'flex:1';
+    const varStyle   = isVar ? 'flex:1'              : 'flex:1;display:none';
+    return `
+      <div class="d-flex gap-1 align-items-center">
+        <select class="form-select form-select-sm" id="${prefix}-type" style="width:82px;flex-shrink:0">
+          <option value="fixed"${!isVar?' selected':''}>Fixed</option>
+          <option value="var"${isVar?' selected':''}>Variable</option>
+        </select>
+        <select class="form-select form-select-sm" id="${prefix}-fixed" style="${fixedStyle}">${colorOpts}</select>
+        <input  class="form-control form-control-sm" id="${prefix}-var"
+                placeholder="{varname}" value="${isVar ? currentColor : ''}" style="${varStyle}">
+        <div class="color-swatch" id="${prefix}-swatch" style="background:${resolveColor(currentColor)};flex-shrink:0"></div>
+      </div>`;
+}
+
+function bindColorWidget(prefix, onChange) {
+    const typeEl  = document.getElementById(`${prefix}-type`);
+    if (!typeEl) return;   // no colour widget for this prefix in the current props panel
+    const fixedEl = document.getElementById(`${prefix}-fixed`);
+    const varEl   = document.getElementById(`${prefix}-var`);
+    const swatch  = document.getElementById(`${prefix}-swatch`);
+
+    const getColor = () => typeEl.value === 'var' ? (varEl.value || '{var}') : fixedEl.value;
+    const update = () => { swatch.style.background = resolveColor(getColor()); onChange(getColor()); };
+
+    typeEl.addEventListener('change', () => {
+        fixedEl.style.cssText = typeEl.value === 'var' ? 'flex:1;display:none' : 'flex:1';
+        varEl.style.cssText   = typeEl.value === 'var' ? 'flex:1'              : 'flex:1;display:none';
+        update();
+    });
+    fixedEl.addEventListener('change', update);
+    varEl.addEventListener('input', update);
+}
+
+const LBL = 'style="font-size:0.72rem" class="text-muted d-block mb-0"';
+function field(label, content) {
+    return `<div class="mb-1"><small ${LBL}>${label}</small>${content}</div>`;
+}
+function fieldPair(l1, c1, l2, c2) {
+    return `<div class="d-flex gap-2 mb-1">
+      <div class="flex-fill"><small ${LBL}>${l1}</small>${c1}</div>
+      <div class="flex-fill"><small ${LBL}>${l2}</small>${c2}</div>
+    </div>`;
+}
+function numIn(id, val, min='') {
+    return `<input type="number" class="form-control form-control-sm" id="${id}" value="${val}"${min!==''?' min="'+min+'"':''}>`;
+}
+function txtIn(id, val) {
+    return `<input type="text" class="form-control form-control-sm" id="${id}" value="${val.replace(/"/g,'&quot;')}">`;
+}
+function txaIn(id, val, rows=3) {
+    const esc = String(val).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    return `<textarea class="form-control form-control-sm font-monospace" id="${id}" rows="${rows}" style="resize:vertical">${esc}</textarea>`;
+}
+
+function renderProps(obj) {
+    const panel = document.getElementById('props-panel');
+    if (!obj || !obj._oepl) {
+        panel.innerHTML = '<small class="text-muted">Select an element to edit its properties</small>';
+        return;
+    }
+    const o = obj._oepl;
+    const s = dscale;
+    const x = Math.round(obj.left / s);
+    const y = Math.round(obj.top / s);
+    const w = Math.round((obj.width  * Math.abs(obj.scaleX)) / s);
+    const h = Math.round((obj.height * Math.abs(obj.scaleY)) / s);
+
+    let html = '';
+
+    // Shared options (used by both text and textbox)
+    const fontOpts = FONTS.map(f =>
+        `<option value="${f.oepl}"${o.font===f.oepl?' selected':''}>${f.label}</option>`
+    ).join('');
+    const alignOpts = [['Left','0'],['Center','1'],['Right','2']].map(([l,v]) =>
+        `<option value="${v}"${String(o.align)===v?' selected':''}>${l}</option>`
+    ).join('');
+
+    if (o.type === 'text') {
+        const size = Math.max(1, Math.round((obj.fontSize * Math.abs(obj.scaleY)) / s));
+        html += field('Text',   txtIn('p-text', o.origText ?? obj.text));
+        html += field('Font',   `<select class="form-select form-select-sm" id="p-font">${fontOpts}</select>`);
+        html += fieldPair('Size', numIn('p-size', size, 1), 'Align', `<select class="form-select form-select-sm" id="p-align">${alignOpts}</select>`);
+        html += field('Colour', colorWidget('pc', o.color));
+        html += field('BG Colour (optional)', colorWidget('pb', o.bgcolor ?? 'white'));
+        html += `<div class="mb-1"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="p-bgcolor-en"${o.bgcolor ? ' checked' : ''}><label class="form-check-label" style="font-size:0.72rem" for="p-bgcolor-en">Enable background colour</label></div></div>`;
+        html += fieldPair('X',  numIn('p-x', x), 'Y', numIn('p-y', y));
+
+    } else if (o.type === 'box' || o.type === 'rbox') {
+        // Outer bounds = Fabric path + half stroke on each side
+        const sw = obj.strokeWidth ?? 0;
+        const ox = Math.round(obj.left / s);
+        const oy = Math.round(obj.top  / s);
+        const ow = Math.round((obj.width  * Math.abs(obj.scaleX) + sw) / s);
+        const oh = Math.round((obj.height * Math.abs(obj.scaleY) + sw) / s);
+        html += fieldPair('X',      numIn('p-x', ox),     'Y',      numIn('p-y', oy));
+        html += fieldPair('Width',  numIn('p-w', ow, 1),  'Height', numIn('p-h', oh, 1));
+        html += field('Colour', colorWidget('pc', o.color));
+        if (o.type === 'rbox') {
+            const r = Math.max(0, Math.round((obj.rx * Math.abs(obj.scaleX)) / s));
+            html += field('Radius', numIn('p-r', r, 0));
+        }
+        html += field('Border Colour', colorWidget('pb', o.bordercolor ?? 'black'));
+        html += field('Border Width',  numIn('p-bw', o.borderwidth ?? 0, 0));
+
+    } else if (o.type === 'bars') {
+        html += fieldPair('X',      numIn('p-x', x),    'Y',        numIn('p-y', y));
+        html += fieldPair('Width',  numIn('p-w', w, 1), 'Height',   numIn('p-h', h, 1));
+        html += field('Colour',   colorWidget('pc', o.color));
+        html += field('Variable', txtIn('p-valvar', o.valueVar));
+        const dirOpts = [[0,'Left → Right'],[1,'Right → Left']].map(([v,l]) =>
+            `<option value="${v}"${(o.direction??0)==v?' selected':''}>${l}</option>`).join('');
+        html += field('Direction', `<select class="form-select form-select-sm" id="p-dir">${dirOpts}</select>`);
+
+    } else if (o.type === 'line') {
+        const [lx1,ly1,lx2,ly2] = getPolyCoords(obj, s);
+        html += fieldPair('X1', numIn('p-x1', lx1), 'Y1', numIn('p-y1', ly1));
+        html += fieldPair('X2', numIn('p-x2', lx2), 'Y2', numIn('p-y2', ly2));
+        html += field('Colour', colorWidget('pc', o.color));
+
+    } else if (o.type === 'triangle') {
+        const [tx1,ty1,tx2,ty2,tx3,ty3] = getPolyCoords(obj, s);
+        html += fieldPair('X1', numIn('p-x1', tx1), 'Y1', numIn('p-y1', ty1));
+        html += fieldPair('X2', numIn('p-x2', tx2), 'Y2', numIn('p-y2', ty2));
+        html += fieldPair('X3', numIn('p-x3', tx3), 'Y3', numIn('p-y3', ty3));
+        html += field('Colour', colorWidget('pc', o.color));
+
+    } else if (o.type === 'circle') {
+        html += fieldPair('X (centre)', numIn('p-x', Math.round(obj.left/s)),
+                          'Y (centre)', numIn('p-y', Math.round(obj.top/s)));
+        html += field('Radius', numIn('p-r', Math.round((obj.radius * Math.abs(obj.scaleX) + (obj.strokeWidth??0)/2) / s), 1));
+        html += field('Colour', colorWidget('pc', o.color));
+        html += field('Border Colour', colorWidget('pb', o.bordercolor ?? 'black'));
+        html += field('Border Width',  numIn('p-bw', o.borderwidth ?? 0, 0));
+
+    } else if (o.type === 'image') {
+        const iw = Math.round((obj.width  * Math.abs(obj.scaleX)) / s);
+        const ih = Math.round((obj.height * Math.abs(obj.scaleY)) / s);
+        html += field('Image',
+            `<div class="d-flex gap-1 align-items-center">
+               <button class="btn btn-outline-secondary btn-sm" id="p-img-pick" type="button">Pick file…</button>
+               <input type="file" id="p-img-file" accept="image/*" style="display:none">
+               <select class="form-select form-select-sm" id="p-img-ap" style="flex:1">
+                 <option value="">— AP files —</option>
+               </select>
+             </div>`);
+        html += field('Filename', `<input type="text" class="form-control form-control-sm" id="p-filename" value="${(o.filename||'').replace(/"/g,'&quot;')}" readonly>`);
+        html += fieldPair('X', numIn('p-x', x), 'Y', numIn('p-y', y));
+        html += fieldPair('Width', numIn('p-w', iw, 1), 'Height', numIn('p-h', ih, 1));
+
+    } else if (o.type === 'textbox') {
+        const tw = Math.round((obj.width  * Math.abs(obj.scaleX)) / s);
+        const th = Math.round((obj.height * Math.abs(obj.scaleY)) / s);
+        html += field('Text',   txaIn('p-text', o.origText ?? obj.text));
+        html += field('Font',   `<select class="form-select form-select-sm" id="p-font">${fontOpts}</select>`);
+        html += fieldPair('X',  numIn('p-x', x),         'Y',      numIn('p-y', y));
+        html += fieldPair('Width', numIn('p-w', tw, 1),  'Height', numIn('p-h', th, 1));
+        html += fieldPair('Line H', numIn('p-lh', o.lineHeight, 0.1), 'Align',
+                          `<select class="form-select form-select-sm" id="p-align">${alignOpts}</select>`);
+        html += field('Colour', colorWidget('pc', o.color));
+    }
+
+    html += `<div class="mt-2"><small class="text-muted fst-italic">Type: ${o.type}</small></div>`;
+    panel.innerHTML = `<form id="props-form" autocomplete="off">${html}</form>`;
+
+    // ── Image element bindings ─────────────────────────────────────────────────
+    if (o.type === 'image') {
+        // Populate AP file dropdown from cache (fetch once, reuse thereafter)
+        const apSel = document.getElementById('p-img-ap');
+        function populateApDropdown(files) {
+            // Remove any options beyond the placeholder
+            while (apSel.options.length > 1) apSel.remove(1);
+            files.forEach(f => {
+                const opt = document.createElement('option');
+                opt.value = f; opt.textContent = f;
+                if (f === o.filename) opt.selected = true;
+                apSel.appendChild(opt);
+            });
+        }
+        if (apImageList !== null) {
+            populateApDropdown(apImageList);
+        } else {
+            fetch('/api/images/ap_list').then(r => r.json()).then(files => {
+                apImageList = files;
+                populateApDropdown(files);
+            }).catch(() => { apImageList = []; });
+        }
+
+        // Helper: swap canvas obj for fabric.Image, preserve position/size
+        function loadImageOntoCanvas(url, filename, srcId) {
+            const curObj = canvas.getActiveObject();
+            if (!curObj) return;
+            const oepl = curObj._oepl;
+            const cx = curObj.left, cy = curObj.top;
+            const tw = oepl.imgW * dscale, th = oepl.imgH * dscale;
+            fabric.Image.fromURL(url, (fImg) => {
+                if (!fImg) { alert('Failed to load image preview'); return; }
+                oepl.filename = filename;
+                oepl.srcId    = srcId;
+                fImg.set({
+                    left: cx, top: cy,
+                    scaleX: tw / fImg.width,
+                    scaleY: th / fImg.height,
+                    _oepl: { ...oepl },
+                    objectCaching: false,
+                });
+                if (fImg.controls?.mtr) fImg.setControlsVisibility({ mtr: false });
+                canvas.remove(curObj);
+                canvas.add(fImg);
+                canvas.setActiveObject(fImg);
+                canvas.renderAll();
+                renderProps(fImg);
+                scheduleJsonUpdate();
+            }, { crossOrigin: 'anonymous' });
+        }
+
+        // Local file picker
+        document.getElementById('p-img-pick').addEventListener('click', () => {
+            document.getElementById('p-img-file').click();
+        });
+        document.getElementById('p-img-file').addEventListener('change', async (ev) => {
+            const file = ev.target.files[0];
+            if (!file) return;
+            const fd = new FormData();
+            fd.append('file', file);
+            try {
+                const r = await fetch('/api/images/stage', { method: 'POST', body: fd });
+                if (!r.ok) { alert('Upload failed'); return; }
+                const info = await r.json();
+                // Update imgW/imgH to natural image size, user can resize after
+                o.imgW = info.width;
+                o.imgH = info.height;
+                document.getElementById('p-w').value = info.width;
+                document.getElementById('p-h').value = info.height;
+                loadImageOntoCanvas(info.url, file.name, info.id);
+            } catch(e) { alert('Stage error: ' + e); }
+        });
+
+        // AP file picker
+        apSel.addEventListener('change', () => {
+            const fname = apSel.value;
+            if (!fname) return;
+            const url = `/api/images/ap_proxy/${encodeURIComponent(fname)}`;
+            loadImageOntoCanvas(url, fname, null);
+        });
+    }
+
+    // Bind fill colour widget
+    bindColorWidget('pc', newColor => {
+        obj._oepl.color = newColor;
+        applyColorToObj(obj, newColor);
+        canvas.renderAll();
+        scheduleJsonUpdate();
+    });
+    // Bind secondary colour widget: bgcolor for text, bordercolor for box/rbox/circle
+    bindColorWidget('pb', newColor => {
+        if (o.type === 'text') {
+            obj._oepl.bgcolor = newColor;
+            if (document.getElementById('p-bgcolor-en')?.checked) {
+                obj.set({ backgroundColor: resolveColor(newColor) });
+                canvas.renderAll();
+            }
+        } else {
+            obj._oepl.bordercolor = newColor;
+            if ((obj._oepl.borderwidth ?? 0) > 0) {
+                obj.set({ stroke: resolveColor(newColor) });
+                canvas.renderAll();
+            }
+        }
+        scheduleJsonUpdate();
+    });
+
+    // Bind all other inputs (exclude colour widget selects and image-specific controls)
+    // line/triangle replace the canvas object on every change — bind only 'change' (not 'input')
+    // to avoid double-firing from number spinner click (input then change).
+    const replaceOnChange = (o.type === 'line' || o.type === 'triangle');
+    panel.querySelectorAll('input:not(#p-img-file), select:not([id^="pc"]):not([id^="pb"]):not(#p-img-ap)').forEach(el => {
+        if (!replaceOnChange) el.addEventListener('input',  () => applyProps(obj));
+        el.addEventListener('change', () => applyProps(obj));
+    });
+}
+
+function applyProps(obj) {
+    // Guard against stale references (e.g. line/triangle replacement fires input+change)
+    if (!canvas.getObjects().includes(obj)) return;
+    const o   = obj._oepl;
+    const s   = dscale;
+    const num = id => parseFloat(document.getElementById(id)?.value) || 0;
+    const str = id => document.getElementById(id)?.value ?? '';
+
+    if (o.type === 'text') {
+        const newFont    = str('p-font');
+        const newAlign   = parseInt(str('p-align')) || 0;
+        const rawText    = str('p-text') || ' ';
+        const bgEnabled  = document.getElementById('p-bgcolor-en')?.checked ?? false;
+        o.origText = rawText;
+        o.font  = newFont;
+        o.align = newAlign;
+        if (!bgEnabled) o.bgcolor = null;
+        obj.set({
+            text:            resolveText(rawText) || ' ',
+            fontFamily:      fontCss(newFont),
+            fontSize:        Math.max(1, num('p-size')) * s,
+            scaleX: 1, scaleY: 1,
+            originX:         ['left','center','right'][newAlign] ?? 'left',
+            left:            num('p-x') * s,
+            top:             num('p-y') * s,
+            backgroundColor: o.bgcolor ? resolveColor(o.bgcolor) : '',
+        });
+
+    } else if (o.type === 'box') {
+        o.borderwidth = num('p-bw');
+        const sw_box = o.borderwidth * s;
+        obj.set({
+            left: num('p-x')*s, top: num('p-y')*s,
+            width: Math.max(1, num('p-w'))*s - sw_box, height: Math.max(1, num('p-h'))*s - sw_box,
+            scaleX: 1, scaleY: 1,
+            strokeWidth: sw_box,
+            stroke: o.borderwidth > 0 ? resolveColor(o.bordercolor ?? 'black') : null,
+            strokeUniform: true,
+        });
+
+    } else if (o.type === 'rbox') {
+        const r = Math.max(0, num('p-r'));
+        o.borderwidth = num('p-bw');
+        const sw_rbox = o.borderwidth * s;
+        obj.set({
+            left: num('p-x')*s, top: num('p-y')*s,
+            width: Math.max(1, num('p-w'))*s - sw_rbox, height: Math.max(1, num('p-h'))*s - sw_rbox,
+            rx: r*s, ry: r*s,
+            scaleX: 1, scaleY: 1,
+            strokeWidth: sw_rbox,
+            stroke: o.borderwidth > 0 ? resolveColor(o.bordercolor ?? 'black') : null,
+            strokeUniform: true,
+        });
+        o.radius = r;
+
+    } else if (o.type === 'bars') {
+        obj.set({
+            left: num('p-x')*s, top: num('p-y')*s,
+            width: Math.max(1, num('p-w'))*s, height: Math.max(1, num('p-h'))*s,
+            scaleX: 1, scaleY: 1,
+        });
+        o.valueVar = str('p-valvar') || '{pct}';
+        o.direction = parseInt(document.getElementById('p-dir')?.value ?? '0') || 0;
+
+    } else if (o.type === 'line') {
+        // Replace line with updated coordinates
+        addElement('line', [num('p-x1'), num('p-y1'), num('p-x2'), num('p-y2'), o.color], true);
+        canvas.remove(obj);
+        scheduleJsonUpdate();
+        return;
+
+    } else if (o.type === 'triangle') {
+        // Replace polygon with updated coordinates
+        addElement('triangle', [num('p-x1'), num('p-y1'), num('p-x2'), num('p-y2'), num('p-x3'), num('p-y3'), o.color], true);
+        canvas.remove(obj);
+        scheduleJsonUpdate();
+        return;
+
+    } else if (o.type === 'circle') {
+        o.borderwidth = num('p-bw');
+        const sw_circ = o.borderwidth * s;
+        obj.set({
+            left:   num('p-x') * s,
+            top:    num('p-y') * s,
+            radius: Math.max(1, num('p-r')) * s - sw_circ/2,
+            scaleX: 1, scaleY: 1,
+            strokeWidth: sw_circ,
+            stroke: o.borderwidth > 0 ? resolveColor(o.bordercolor ?? 'black') : null,
+            strokeUniform: true,
+        });
+
+    } else if (o.type === 'image') {
+        const newW = Math.max(1, num('p-w'));
+        const newH = Math.max(1, num('p-h'));
+        o.imgW = newW;
+        o.imgH = newH;
+        // For fabric.Image scaleX/Y must be set; for Rect width/height directly
+        if (obj.type === 'image') {
+            obj.set({
+                left: num('p-x') * s, top: num('p-y') * s,
+                scaleX: (newW * s) / obj.width,
+                scaleY: (newH * s) / obj.height,
+            });
+        } else {
+            obj.set({
+                left: num('p-x') * s, top: num('p-y') * s,
+                width: newW * s, height: newH * s,
+                scaleX: 1, scaleY: 1,
+            });
+        }
+
+    } else if (o.type === 'textbox') {
+        const newFont  = str('p-font');
+        const newAlign = parseInt(str('p-align')) || 0;
+        const rawText  = str('p-text') || ' ';
+        const lh       = Math.max(0.1, num('p-lh')) || 1.2;
+        o.origText  = rawText;
+        o.lineHeight = lh;
+        o.align     = newAlign;
+        o.font      = newFont;
+        const desiredH = Math.max(1, num('p-h')) * s;
+        obj.set({
+            text:       resolveText(rawText) || ' ',
+            fontFamily: fontCss(newFont),
+            textAlign:  ['left','center','right'][newAlign] ?? 'left',
+            lineHeight: lh,
+            width:      Math.max(1, num('p-w')) * s,
+            left:       num('p-x') * s,
+            top:        num('p-y') * s,
+            scaleX: 1,
+            scaleY: obj.height > 0 ? desiredH / obj.height : 1,
+        });
+    }
+
+    obj.setCoords();
+    canvas.renderAll();
+    scheduleJsonUpdate();
+}
+
+// ── Refresh canvas with current varsState ────────────────────────────────────
+
+function refreshCanvas() {
+    if (!canvas) return;
+    for (const obj of canvas.getObjects()) {
+        if (!obj._oepl) continue;
+        const o = obj._oepl;
+        applyColorToObj(obj, o.color);
+        if (o.type === 'text' || o.type === 'textbox') {
+            obj.set({ text: resolveText(o.origText ?? obj.text) || ' ' });
+        }
+    }
+    canvas.renderAll();
+    scheduleJsonUpdate();
+}
+
+// ── Vars panel ────────────────────────────────────────────────────────────────
+
+function renderVars() {
+    const panel = document.getElementById('vars-panel');
+    const entries = Object.entries(varsState);
+    if (!entries.length) {
+        panel.innerHTML = '<small class="text-muted">No variables defined</small>';
+        return;
+    }
+    panel.innerHTML = entries.map(([k, v]) => `
+      <div class="vars-row" data-key="${k}">
+        <input class="form-control form-control-sm" value="${k}" style="width:38%" readonly title="Variable name">
+        <input class="form-control form-control-sm" value="${v}" style="width:52%" data-role="val" title="Default value">
+        <button class="btn btn-sm btn-outline-danger py-0 px-1 del-var" title="Remove variable">×</button>
+      </div>`).join('');
+
+    panel.querySelectorAll('[data-role="val"]').forEach(el => {
+        el.addEventListener('change', () => {
+            const key = el.closest('.vars-row').dataset.key;
+            varsState[key] = el.value;
+            refreshCanvas();
+        });
+    });
+    panel.querySelectorAll('.del-var').forEach(btn => {
+        btn.addEventListener('click', () => {
+            delete varsState[btn.closest('.vars-row').dataset.key];
+            renderVars();
+        });
+    });
+}
+
+// ── Template selector ─────────────────────────────────────────────────────────
+
+function populateSelector(selectName) {
+    const sel = document.getElementById('tmpl-select');
+    sel.innerHTML = Object.keys(allTemplates).map(n => {
+        const fac = allTemplates[n].factory;
+        return `<option value="${n}"${n===selectName?' selected':''}>${n}${fac?' ★':''}</option>`;
+    }).join('');
+    if (selectName && allTemplates[selectName]) sel.value = selectName;
+}
+
+function loadSelected() {
+    const name = document.getElementById('tmpl-select').value;
+    if (!name || !allTemplates[name]) return;
+    currentName = name;
+    isFactory   = allTemplates[name].factory;
+    document.getElementById('btn-save').disabled   = isFactory;
+    document.getElementById('btn-delete').disabled = isFactory;
+    document.getElementById('btn-save').title   = isFactory ? 'Factory templates are read-only' : 'Save template';
+    document.getElementById('btn-delete').title = isFactory ? 'Factory templates are read-only' : 'Delete template';
+    loadOepl(allTemplates[name].template);
+    renderProps(null);
+}
+
+// ── API ───────────────────────────────────────────────────────────────────────
+
+async function fetchTemplates() {
+    const r = await fetch('/api/templates');
+    if (!r.ok) { console.error('Failed to load templates'); return; }
+    allTemplates = await r.json();
+    const first  = Object.keys(allTemplates)[0] ?? null;
+    populateSelector(first);
+    loadSelected();
+}
+
+async function saveTemplate(name, data) {
+    const r = await fetch(`/api/templates/${encodeURIComponent(name)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+    });
+    if (!r.ok) {
+        const msg = (await r.json()).error ?? 'Save failed';
+        alert(msg);
+        return false;
+    }
+    return true;
+}
+
+async function deleteTemplate(name) {
+    const r = await fetch(`/api/templates/${encodeURIComponent(name)}`, { method: 'DELETE' });
+    if (!r.ok) { alert((await r.json()).error ?? 'Delete failed'); return false; }
+    return true;
+}
+
+// ── Button handlers ───────────────────────────────────────────────────────────
+
+document.getElementById('tmpl-select').addEventListener('change', loadSelected);
+
+document.getElementById('btn-new').addEventListener('click', () => {
+    const name = prompt('New template name:');
+    if (!name || !name.trim()) return;
+    if (allTemplates[name]?.factory) { alert('Cannot overwrite a factory template.'); return; }
+    const currentData = toOepl();  // copy current canvas state into new template
+    allTemplates[name] = { template: currentData, factory: false };
+    currentName = name;
+    isFactory   = false;
+    populateSelector(name);
+    loadSelected();
+});
+
+document.getElementById('btn-save').addEventListener('click', async () => {
+    if (isFactory || !currentName) return;
+    const data = toOepl();
+    if (await saveTemplate(currentName, data)) {
+        allTemplates[currentName].template = data;
+        // Flash the Save button briefly to confirm
+        const btn = document.getElementById('btn-save');
+        const prev = btn.textContent;
+        btn.textContent = '✓ Saved';
+        setTimeout(() => { btn.textContent = prev; }, 1500);
+    }
+});
+
+document.getElementById('btn-reset').addEventListener('click', () => {
+    if (!currentName || !allTemplates[currentName]) return;
+    loadOepl(allTemplates[currentName].template);
+});
+
+document.getElementById('btn-delete').addEventListener('click', async () => {
+    if (isFactory || !currentName) return;
+    if (!confirm(`Delete template "${currentName}"?`)) return;
+    if (await deleteTemplate(currentName)) {
+        delete allTemplates[currentName];
+        currentName = null;
+        const first = Object.keys(allTemplates)[0] ?? null;
+        populateSelector(first);
+        loadSelected();
+    }
+});
+
+document.getElementById('btn-add-text').addEventListener('click', () => { addElement('text', null, true); scheduleJsonUpdate(); });
+document.getElementById('btn-add-box') .addEventListener('click', () => { addElement('box',  null, true); scheduleJsonUpdate(); });
+document.getElementById('btn-add-rbox').addEventListener('click', () => { addElement('rbox', null, true); scheduleJsonUpdate(); });
+document.getElementById('btn-add-bars')  .addEventListener('click', () => { addElement('bars',     null, true); scheduleJsonUpdate(); });
+document.getElementById('btn-add-line')  .addEventListener('click', () => { addElement('line',     null, true); scheduleJsonUpdate(); });
+document.getElementById('btn-add-tri')   .addEventListener('click', () => { addElement('triangle', null, true); scheduleJsonUpdate(); });
+document.getElementById('btn-add-circle').addEventListener('click', () => { addElement('circle',   null, true); scheduleJsonUpdate(); });
+document.getElementById('btn-add-image')  .addEventListener('click', () => { addElement('image',    null, true); scheduleJsonUpdate(); });
+document.getElementById('btn-add-textbox').addEventListener('click', () => { addElement('textbox',  null, true); scheduleJsonUpdate(); });
+
+document.getElementById('inp-rotate').addEventListener('change', () => {
+    tagRotate = parseInt(document.getElementById('inp-rotate').value) || 0;
+    scheduleJsonUpdate();
+});
+
+document.getElementById('btn-resize').addEventListener('click', () => {
+    const w = parseInt(document.getElementById('inp-w').value) || 250;
+    const h = parseInt(document.getElementById('inp-h').value) || 128;
+    // Re-extract all objects before canvas is cleared
+    const saved = canvas.getObjects()
+        .filter(o => o._oepl)
+        .map(o => objToParams(o))
+        .filter(Boolean);
+    initCanvas(w, h);
+    saved.forEach(([type, params]) => addElement(type, params));
+    canvas.renderAll();
+});
+
+document.getElementById('btn-layer-up').addEventListener('click', () => {
+    const o = canvas.getActiveObject();
+    if (o) { canvas.bringForward(o); canvas.renderAll(); scheduleJsonUpdate(); }
+});
+document.getElementById('btn-layer-down').addEventListener('click', () => {
+    const o = canvas.getActiveObject();
+    if (o) { canvas.sendBackwards(o); canvas.renderAll(); scheduleJsonUpdate(); }
+});
+document.getElementById('btn-del-elem').addEventListener('click', deleteSelected);
+
+document.getElementById('btn-add-var').addEventListener('click', () => {
+    const key = prompt('Variable name (without braces, e.g.  pct):');
+    if (!key || !key.trim()) return;
+    if (!(key.trim() in varsState)) varsState[key.trim()] = '';
+    renderVars();
+});
+
+function deleteSelected() {
+    const o = canvas.getActiveObject();
+    if (o) { canvas.remove(o); canvas.renderAll(); renderProps(null); updateJsonPanel(); }
+}
+
+// Delete key on keyboard
+document.addEventListener('keydown', e => {
+    if ((e.key === 'Delete' || e.key === 'Backspace') &&
+        document.activeElement === document.body) {
+        e.preventDefault();
+        deleteSelected();
+    }
+});
+
+// ── JSON panel ───────────────────────────────────────────────────────────────
+
+let _jsonTimer = null;
+function scheduleJsonUpdate() {
+    clearTimeout(_jsonTimer);
+    _jsonTimer = setTimeout(updateJsonPanel, 150);
+}
+
+function formatTemplateJson(data) {
+    // One line per element, array brackets on their own lines
+    const lines = data.map(item => '  ' + JSON.stringify(item));
+    return '[\n' + lines.join(',\n') + '\n]';
+}
+
+function updateJsonPanel() {
+    const ta = document.getElementById('json-panel');
+    if (!ta || document.activeElement === ta) return;  // don't clobber while editing
+    try { ta.value = formatTemplateJson(toOepl()); } catch(e) {}
+}
+
+document.getElementById('btn-apply-json').addEventListener('click', () => {
+    const ta = document.getElementById('json-panel');
+    try {
+        const data = JSON.parse(ta.value);
+        if (!Array.isArray(data)) throw new Error('Expected a JSON array');
+        loadOepl(data);
+    } catch(e) {
+        alert('Invalid JSON: ' + e.message);
+    }
+});
+
+// ── Start ─────────────────────────────────────────────────────────────────────
+
+initCanvas(250, 128);
+fetchTemplates();
+</script>
+{% endblock %}

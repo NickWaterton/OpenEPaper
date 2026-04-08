@@ -11,6 +11,7 @@ N Waterton 27/2/2026  V 1.0.1 : Added web page interface
 __version__ = '1.0.1'
 
 import sys, json
+import io, hashlib
 import pprint
 import logging
 import argparse, os
@@ -51,10 +52,16 @@ INITIAL_BACKOFF = 2  # seconds
 STORAGE_VERSION = 1
 #STORAGE_KEY = f"{DOMAIN}_tags"
 RECONNECT_INTERVAL = 30
+
+_HERE = Path(__file__).parent
+FACTORY_TEMPLATES_FILE = _HERE / 'factory_templates.json'
+USER_TEMPLATES_FILE    = _HERE / 'user_templates.json'
+_log = logging.getLogger('Main')
 SAVE_DELAY = 10
 WEBSOCKET_TIMEOUT = 60
 CONNECTION_TIMEOUT = 10
 TAG_FILE = "open_epaper_link_tags.json"
+TEMPLATE_IMAGES_DIR = _HERE / 'template_images'
 
 '''
 Color parameter
@@ -173,6 +180,39 @@ def get_value_from_template(key, template, default=None):
     could be a single value (like 'template'), or a dictionary like 'vars'
     '''
     return next((item[key] for item in template if key in item), default)
+
+def load_all_templates():
+    '''
+    Load factory templates from factory_templates.json (falls back to hardcoded TEMPLATES),
+    then overlay user templates from user_templates.json.
+    Returns (factory_dict, user_dict).
+    '''
+    factory = {}
+    if FACTORY_TEMPLATES_FILE.exists():
+        try:
+            with open(FACTORY_TEMPLATES_FILE) as f:
+                factory = json.load(f)
+        except Exception as e:
+            _log.error(f'Error loading {FACTORY_TEMPLATES_FILE}: {e}')
+    if not factory:
+        factory = {k: list(v) for k, v in TEMPLATES.items()}
+
+    user = {}
+    if USER_TEMPLATES_FILE.exists():
+        try:
+            with open(USER_TEMPLATES_FILE) as f:
+                user = json.load(f)
+        except Exception as e:
+            _log.error(f'Error loading {USER_TEMPLATES_FILE}: {e}')
+
+    return factory, user
+
+def save_user_templates(user_dict):
+    try:
+        with open(USER_TEMPLATES_FILE, 'w') as f:
+            json.dump(user_dict, f, indent=2)
+    except Exception as e:
+        _log.error(f'Error saving {USER_TEMPLATES_FILE}: {e}')
     
 
         
@@ -193,12 +233,23 @@ class WEB:
         self._removed_macs = set()
         self.connected = set()
         self._exit = False
+        self.factory_templates, self.user_templates = load_all_templates()
+        TEMPLATES.update(self.factory_templates)
+        TEMPLATES.update(self.user_templates)
+        validate_templates()
         self.templates = TEMPLATES
         if folder and folder.is_dir():
             self.app = Quart(__name__, static_folder=folder)
             self.bootstrap = Bootstrap5(self.app)
             self.app.config['BOOTSTRAP_BOOTSWATCH_THEME'] = 'cyborg'
-            self.app.add_url_rule('/','show_tags', self.show_tags)
+            self.app.add_url_rule('/', 'show_tags', self.show_tags)
+            self.app.add_url_rule('/editor', 'show_editor', self.show_editor)
+            self.app.add_url_rule('/api/templates', 'api_templates', self.api_templates, methods=['GET'])
+            self.app.add_url_rule('/api/templates/<path:name>', 'api_template', self.api_template, methods=['POST', 'DELETE'])
+            self.app.add_url_rule('/api/images/stage', 'api_images_stage', self.api_images_stage, methods=['POST'])
+            self.app.add_url_rule('/api/images/src/<path:src_id>', 'api_images_src', self.api_images_src, methods=['GET'])
+            self.app.add_url_rule('/api/images/ap_list', 'api_images_ap_list', self.api_images_ap_list, methods=['GET'])
+            self.app.add_url_rule('/api/images/ap_proxy/<path:filename>', 'api_images_ap_proxy', self.api_images_ap_proxy, methods=['GET'])
             self.app.add_websocket('/ws', 'ws', self.ws)
         else:
             self.app = None
@@ -491,8 +542,201 @@ class WEB:
         tag_data = self.get_data()
         self.log.info(f'rendering: {tag_data}')
         return await render_template('index.html', names=tag_data, ap_ip=self.ap_ip)
-    
-    
+
+    async def show_editor(self):
+        return await render_template('editor.html')
+
+    async def api_templates(self):
+        '''GET /api/templates — return all templates with factory flag'''
+        result = {}
+        for name, tmpl in self.factory_templates.items():
+            result[name] = {'template': tmpl, 'factory': True}
+        for name, tmpl in self.user_templates.items():
+            result[name] = {'template': tmpl, 'factory': False}
+        return jsonify(result)
+
+    def _reload_tag_templates(self):
+        '''Refresh each TAG's template list after TEMPLATES has been mutated.'''
+        # Reset instance templates back to the global TEMPLATES so get_BWR_Templates()
+        # filters from the updated source, not the stale old BWR_Templates copy.
+        TAG.BWR_Templates = {}
+        for mac in self._data:
+            try:
+                self._data[mac].templates = TEMPLATES
+                self._data[mac].get_BWR_Templates()
+                self._data[mac].load_templates()
+            except Exception as e:
+                self.log.warning(f'reload_tag_templates {mac}: {e}')
+
+    async def _process_template_images(self, template_data: list, template_name: str) -> list:
+        '''
+        Walk template elements, find image entries with a _src_id sidecar,
+        resize to the declared w/h, save locally, upload to AP, replace filename.
+        Returns a new template list with _src_id keys stripped.
+        '''
+        TEMPLATE_IMAGES_DIR.mkdir(exist_ok=True)
+        img_index = 0
+        out = []
+        for item in template_data:
+            if 'image' not in item:
+                out.append(item)
+                continue
+            params = list(item['image'])           # [filename, x, y] + optional _src_id, w, h
+            src_id = item.get('_src_id')
+            tgt_w  = item.get('_img_w')
+            tgt_h  = item.get('_img_h')
+            # Build a safe AP filename: {template}_{index}.jpg
+            safe_name = re.sub(r'[^A-Za-z0-9_\-]', '_', template_name)
+            ap_filename = f'{safe_name}_{img_index}.jpg'
+            img_index += 1
+            if src_id and tgt_w and tgt_h:
+                src_path = TEMPLATE_IMAGES_DIR / f'{src_id}_src.jpg'
+                if src_path.exists():
+                    try:
+                        img = Image.open(src_path).convert('RGB')
+                        img = img.resize((int(tgt_w), int(tgt_h)), Image.LANCZOS)
+                        buf = io.BytesIO()
+                        img.save(buf, 'JPEG', quality=85)
+                        jpeg_bytes = buf.getvalue()
+                        # Save resized copy locally
+                        local_path = TEMPLATE_IMAGES_DIR / ap_filename
+                        local_path.write_bytes(jpeg_bytes)
+                        await self._upload_image_to_ap(ap_filename, jpeg_bytes)
+                        params = [ap_filename, params[1] if len(params) > 1 else 0,
+                                              params[2] if len(params) > 2 else 0]
+                        self.log.info(f'Processed image {ap_filename} ({tgt_w}x{tgt_h})')
+                    except Exception as e:
+                        self.log.error(f'Image processing failed for {src_id}: {e}')
+            entry = {'image': params}
+            # Persist dimensions so editor can restore correct size on reload
+            if tgt_w: entry['_img_w'] = tgt_w
+            if tgt_h: entry['_img_h'] = tgt_h
+            out.append(entry)
+        return out
+
+    async def api_template(self, name):
+        '''POST /api/templates/<name> — save; DELETE — delete. Factory templates are read-only.'''
+        if request.method == 'POST':
+            if name in self.factory_templates:
+                return jsonify({'error': 'Cannot overwrite a factory template'}), 403
+            data = await request.get_json()
+            data = await self._process_template_images(data, name)
+            self.user_templates[name] = data
+            TEMPLATES[name] = data
+            save_user_templates(self.user_templates)
+            self._reload_tag_templates()
+            self.log.info(f'Saved user template: {name}')
+            return jsonify({'ok': True})
+
+        elif request.method == 'DELETE':
+            if name in self.factory_templates:
+                return jsonify({'error': 'Cannot delete a factory template'}), 403
+            if name not in self.user_templates:
+                return jsonify({'error': 'Template not found'}), 404
+            del self.user_templates[name]
+            TEMPLATES.pop(name, None)
+            save_user_templates(self.user_templates)
+            self._reload_tag_templates()
+            self.log.info(f'Deleted user template: {name}')
+            return jsonify({'ok': True})
+
+    async def api_images_stage(self):
+        '''POST /api/images/stage — receive a local file upload, save as source, return preview info.'''
+        TEMPLATE_IMAGES_DIR.mkdir(exist_ok=True)
+        files = await request.files
+        f = files.get('file')
+        if f is None:
+            return jsonify({'error': 'No file provided'}), 400
+        data = f.read()
+        src_id = hashlib.sha1(data).hexdigest()[:16]
+        src_path = TEMPLATE_IMAGES_DIR / f'{src_id}_src.jpg'
+        try:
+            img = Image.open(io.BytesIO(data)).convert('RGB')
+            img.save(src_path, 'JPEG')
+            w, h = img.size
+        except Exception as e:
+            return jsonify({'error': f'Invalid image: {e}'}), 400
+        self.log.info(f'Staged image {src_id} ({w}x{h})')
+        return jsonify({'id': src_id, 'url': f'/api/images/src/{src_id}', 'width': w, 'height': h})
+
+    async def api_images_src(self, src_id):
+        '''GET /api/images/src/<id> — serve a staged source image for editor preview.'''
+        # Sanitise: only hex chars allowed
+        if not all(c in '0123456789abcdef' for c in src_id):
+            return jsonify({'error': 'Invalid id'}), 400
+        path = TEMPLATE_IMAGES_DIR / f'{src_id}_src.jpg'
+        if not path.exists():
+            return jsonify({'error': 'Not found'}), 404
+        response = await make_response(path.read_bytes())
+        response.headers['Content-Type'] = 'image/jpeg'
+        response.headers['Cache-Control'] = 'no-cache'
+        return response
+
+    async def api_images_ap_list(self):
+        '''GET /api/images/ap_list — proxy AP /edit?list=/ and return jpg/png filenames.'''
+        if not self.ap_ip:
+            return jsonify([])
+        try:
+            data = await self._ap_request('get', 'edit?list=/')
+            files = []
+            if isinstance(data, list):
+                files = [e['name'].lstrip('/') for e in data
+                         if isinstance(e, dict) and e.get('name', '').lower().endswith(('.jpg', '.jpeg', '.png'))]
+            elif isinstance(data, dict):
+                files = [e['name'].lstrip('/') for e in data.get('files', [])
+                         if isinstance(e, dict) and e.get('name', '').lower().endswith(('.jpg', '.jpeg', '.png'))]
+            return jsonify(sorted(files))
+        except Exception as e:
+            self.log.warning(f'ap_list error: {e}')
+            return jsonify([])
+
+    async def _upload_image_to_ap(self, filename: str, jpeg_data: bytes):
+        '''Upload a JPEG to the AP filesystem via POST /edit (SPIFFSEditor).'''
+        if not self.ap_ip:
+            self.log.warning('No AP configured — skipping image upload')
+            return
+        form = aiohttp.FormData()
+        form.add_field('data', jpeg_data,
+                       filename=filename,
+                       content_type='image/jpeg')
+        try:
+            timeout = aiohttp.ClientTimeout(total=30)
+            url = f'http://{self.ap_ip}/edit'
+            if self._session is None or self._session.closed:
+                self._session = aiohttp.ClientSession()
+            async with self._session.post(url, data=form, timeout=timeout) as resp:
+                if resp.status in (200, 201):
+                    self.log.info(f'Uploaded {filename} to AP ({len(jpeg_data)} bytes)')
+                else:
+                    text = await resp.text()
+                    self.log.error(f'AP image upload failed {resp.status}: {text}')
+        except Exception as e:
+            self.log.error(f'AP image upload exception: {e}')
+
+    async def api_images_ap_proxy(self, filename):
+        '''GET /api/images/ap_proxy/<filename> — fetch a file from AP FS and return it.
+        Used by editor to preview images already stored on the AP.'''
+        if not self.ap_ip:
+            return jsonify({'error': 'No AP configured'}), 404
+        # Try local cache first
+        local = TEMPLATE_IMAGES_DIR / filename
+        if local.exists():
+            response = await make_response(local.read_bytes())
+            response.headers['Content-Type'] = 'image/jpeg'
+            return response
+        try:
+            data = await self._ap_request('get', f'edit?download=/{filename}', is_binary=True)
+            if not data:
+                return jsonify({'error': 'Not found on AP'}), 404
+            response = await make_response(data)
+            response.headers['Content-Type'] = 'image/jpeg'
+            response.headers['Cache-Control'] = 'no-cache'
+            return response
+        except Exception as e:
+            self.log.error(f'ap_proxy error: {e}')
+            return jsonify({'error': str(e)}), 500
+
+
 class TAG(UserDict):
     '''
     class containg all the data and methods for one tag
@@ -505,7 +749,7 @@ class TAG(UserDict):
                'line'       : {(0,2)    :'H', (1,3)     :'V'},
                'triangle'   : {(0,2,4)  :'H', (1,3,5)   :'V'},
                'circle'     : {(0,)     :'H', (1,)      :'V', (2,)  :'R'},
-               'image'      : {(0,)     :'H', (1,)      :'V'},
+               'image'      : {(1,)     :'H', (2,)      :'V'},
                'default'    : {(0,2)    :'H', (1,3)     :'V'},
               }
               
@@ -639,7 +883,13 @@ class TAG(UserDict):
             key, value = self.get_template_line(line)
             if isinstance(value, list):
                 scaled = [self.scale_val(key, i, v, scale) for i, v in enumerate(value)]
-                return {key: scaled}
+                result = {key: scaled}  # OEPL key first, then sidecar keys
+                result.update({k: v for k, v in line.items() if k != key})
+                # Scale stored image dimensions too
+                if key == 'image':
+                    if '_img_w' in result: result['_img_w'] = int(result['_img_w'] * scale[0])
+                    if '_img_h' in result: result['_img_h'] = int(result['_img_h'] * scale[1])
+                return result
             return line
 
         scaled_template = [scale_line(line) for line in template]
@@ -659,6 +909,9 @@ class TAG(UserDict):
         )
 
         if direction is None:
+            return val
+
+        if not isinstance(val, (int, float)):
             return val
 
         if direction == "H":
@@ -697,12 +950,14 @@ class TAG(UserDict):
             self.log.info(f'self.tag_json: {self.tag_json}')
             template_key = get_value_from_template('template', current)
             # update web tag_vars dict with current vars, including the current tag template
-            if template_key:
-                self.current_template_key = template_key
-                await self.update_vars_callback(self.mac, {'vars':get_value_from_template('vars', current, {}), 'template':template_key})
-                await self.get_curent_image(current)
-            else:
-                self.log.warning(f'unable to fetch current template from {current}')
+            if not template_key:
+                self.log.warning(f'no template key in AP json for {self.mac} - defaulting to Empty')
+                template_key = 'Empty'
+            self.current_template_key = template_key
+            # Fetch and save the image BEFORE notifying the UI, so the browser
+            # gets the new jpg when it reloads the tag card image.
+            await self.get_curent_image(current)
+            await self.update_vars_callback(self.mac, {'vars':get_value_from_template('vars', current, {}), 'template':template_key})
             return current
         return []
         
@@ -829,7 +1084,8 @@ class TAG(UserDict):
         '''
         vars = vars or {}
 
-        x, y, w, h, c, var = v_list
+        x, y, w, h, c, var, *rest = v_list
+        direction = rest[0] if rest else 0
         key = var.strip("{}")
 
         try:
@@ -842,29 +1098,47 @@ class TAG(UserDict):
         pos = (w * val) // 100
         step = max(1, w // 10)
         bw = max(1, w // 20)
-        
+
         if pos == 0:
             return []
 
+        if direction == 1:
+            # right-to-left: fill from right edge inward
+            return [
+                {"box": [x0, y, bw, h, c]}
+                for x0 in range(x + w - pos, x + w, step)
+            ]
         return [
             {"box": [x0, y, bw, h, c]}
             for x0 in range(x, x + pos, step)
         ]
         
-    def get_and_update_existing_vars(self, tag, vars):
+    def get_and_update_existing_vars(self, tag, vars, template=None):
         """
         find 'vars' in tag json, update them with new values, and return updated vars.
-        if 'vars' doesn't exist, add it to the tag
+        if 'vars' doesn't exist, add it to the tag.
+        If template is supplied, restrict merged vars to keys defined in the template
+        so that stale vars from old templates are not carried forward.
         Pure-functional:
         - does not mutate tag or vars
         - returns (new_tag, merged_vars)
         """
+        # Determine the canonical set of var keys from the template, if available
+        template_vars = None
+        if template:
+            t_vars_entry = next((l for l in template if 'vars' in l), None)
+            if t_vars_entry:
+                template_vars = t_vars_entry['vars']
+
         merged_vars = None
         new_tag = []
 
         for line in tag:
             if "vars" in line and merged_vars is None:
                 merged_vars = {**line["vars"], **vars}
+                if template_vars is not None:
+                    # Keep only keys the template knows about; fill missing with template defaults
+                    merged_vars = {k: merged_vars.get(k, template_vars[k]) for k in template_vars}
                 new_tag.append({"vars": merged_vars})
             else:
                 new_tag.append(line)
@@ -910,8 +1184,8 @@ class TAG(UserDict):
             current_tag = self.templates.get(template_key)
             self.current_template_key = template_key
 
-        # vars updated functionally
-        current_tag, vars = self.get_and_update_existing_vars(current_tag, vars)
+        # vars updated functionally; pass template so stale vars are pruned
+        current_tag, vars = self.get_and_update_existing_vars(current_tag, vars, template=template)
 
         def substitute_vars(key, value):
             """Return a new value list with variables substituted."""
@@ -954,6 +1228,11 @@ class TAG(UserDict):
         ]
 
         new_tag, vars = self.get_and_update_existing_vars(new_tag, vars)
+
+        # Ensure the template key is always present so get_curent_data can find it
+        if template_key and not any('template' in item for item in new_tag):
+            new_tag.append({'template': template_key})
+
         self.log.info("RETURNING NEW TAG: %s", new_tag)
         #if new_tag:
         #    self.save_tag()
@@ -1014,9 +1293,9 @@ class EPaper(WEB):
             
     async def run(self):
         self._session = aiohttp.ClientSession()
+        self._tag_manager = await get_tag_types_manager()
         self.add_task(self.start_mqtt_server())
         self._ws_task = self.add_task(self._websocket_handler())
-        self._tag_manager = await get_tag_types_manager()
         try:
             await self.async_load_all_tags()
         except Exception as e:

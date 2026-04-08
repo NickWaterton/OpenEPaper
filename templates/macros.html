@@ -45,11 +45,12 @@
     <h5 class="mb-0">Click on a Tag to Edit</h5>
     <div class="d-flex align-items-center gap-3">
       <div id="ws-status" class="ws-status disconnected" title="WebSocket Status"></div>
-      {% if ap_ip is defined and ap_ip %}
-        <button class="btn btn-sm btn-light position-absolute end-0 top-50 translate-middle-y" data-bs-toggle="modal" data-bs-target="#apModal">
-          AP Config
-        </button>
-      {% endif %}
+      <div class="position-absolute end-0 top-50 translate-middle-y d-flex gap-2">
+        <a href="/editor" class="btn btn-sm btn-outline-info">Template Designer</a>
+        {% if ap_ip is defined and ap_ip %}
+          <button class="btn btn-sm btn-outline-warning" data-bs-toggle="modal" data-bs-target="#apModal">AP Config</button>
+        {% endif %}
+      </div>
     </div>
   </div>
   {% if ap_ip is defined and ap_ip %}

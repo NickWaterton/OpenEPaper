@@ -2,7 +2,7 @@
   "Empty": [
     {"text": [0, 0, "{name}", "Signika-SB.ttf", "black", 0, 15]},
     {"vars": {"name": "Empty"}},
-    {"size": {"width": 250, "height": 128}}
+    {"size": {"width": 250, "height": 122}}
   ],
   "AMS Tags": [
     {"box":  [0, 0, 250, 70, "{in_use_col_bg}"]},
@@ -15,7 +15,7 @@
     {"text": [245, 90, "{pct}%", "Signika-SB.ttf", "white", 2, 20]},
     {"bars": [115, 90, 80, 20, "white", "{pct}"]},
     {"vars": {"pct": "100", "color": "white", "fil": "PLA", "type": "?", "name": "AMS", "in_use_col_bg": "white", "fil_txt_col": "black"}},
-    {"size": {"width": 250, "height": 128}}
+    {"size": {"width": 250, "height": 122}}
   ],
   "AMS Tags 1": [
     {"text": [250, 10, "{fil}", "fonts/calibrib100", "black", 1, 100]},
@@ -25,7 +25,7 @@
     {"text": [490, 180, "{pct}%", "fonts/calibrib40", "white", 2, 40]},
     {"bars": [230, 180, 160, 40, "white", "{pct}"]},
     {"vars": {"pct": "100", "color": "white", "fil": "PLA"}},
-    {"size": {"width": 500, "height": 256}}
+    {"size": {"width": 500, "height": 244}}
   ],
   "AMS Tags 2": [
     {"box":  [0, 0, 250, 70, "{in_use_col_bg}"]},
@@ -38,7 +38,7 @@
     {"text": [245, 90, "{pct}%", "fonts/calibrib20", "white", 2, 20]},
     {"bars": [115, 90, 80, 20, "white", "{pct}"]},
     {"vars": {"pct": "100", "color": "white", "fil": "PLA", "type": "?", "name": "AMS", "in_use_col_bg": "white", "fil_txt_col": "black"}},
-    {"size": {"width": 250, "height": 128}}
+    {"size": {"width": 250, "height": 122}}
   ],
   "Rack Tags": [
     {"text": [0, 0, "{name}", "fonts/Signika-SB.ttf", "black", 0, 15]},
@@ -46,7 +46,7 @@
     {"box":  [0, 80, 250, 58, "red"]},
     {"text": [250, 90, "{type}", "fonts/Signika-SB.ttf", "white", 2, 20]},
     {"vars": {"name": "Rack", "txt": "Open Racks", "type": "Sindoh PLA"}},
-    {"size": {"width": 250, "height": 128}}
+    {"size": {"width": 250, "height": 122}}
   ],
   "Rack Tags BWRY": [
     {"text": [0, 0, "{name}", "fonts/Signika-SB.ttf", "black", 0, 15]},
@@ -54,6 +54,6 @@
     {"box":  [0, 80, 250, 58, "yellow"]},
     {"text": [250, 90, "{type}", "fonts/Signika-SB.ttf", "black", 2, 20]},
     {"vars": {"name": "Rack", "txt": "Open Racks", "type": "Sindoh PLA"}},
-    {"size": {"width": 250, "height": 128}}
+    {"size": {"width": 250, "height": 122}}
   ]
 }

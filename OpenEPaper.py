@@ -6,9 +6,10 @@ OpenEPapaer to MQTT server
 This is intended for an MQTT interfact to an OpenEPaper AP
 N Waterton 8/1/2026   V 1.0.0 : Initial Release
 N Waterton 27/2/2026  V 1.0.1 : Added web page interface
+N Waterton 9/4/2026   V 1.1.0 : Added Template Designer
 """
 
-__version__ = '1.0.1'
+__version__ = '1.1.0'
 
 import sys, json
 import io, hashlib
@@ -63,6 +64,14 @@ CONNECTION_TIMEOUT = 10
 TAG_FILE = "open_epaper_link_tags.json"
 TEMPLATE_IMAGES_DIR = _HERE / 'template_images'
 
+# Some tags report a buffer size in the tag DB that is larger than the physical
+# display (e.g. 250x128 buffer but only 250x122 visible pixels on 2.13" panels).
+# Add hw_type entries here to override the height used for template scaling.
+# Only height overrides are needed so far; add width if ever required.
+DISPLAY_SIZE_OVERRIDES = {
+    177: {'height': 122},   # Gicisky BLE EPD BWR 2.13" — buffer 128, display 122
+}
+
 '''
 Color parameter
 0 or "white": white
@@ -93,7 +102,7 @@ Template AMS Tags  : AMS tags with in_use highlight (this is the default, and is
 TEMPLATES = {
 "Empty"     :       [{ "text": [0, 0, "{name}", "Signika-SB.ttf", "black", 0, 15] },
                      { "vars": {"name": "Empty"}},
-                     { "size": {"width": 250, "height": 128 }}
+                     { "size": {"width": 250, "height": 122 }}
                    ],
  "AMS Tags" :       [{ "box" : [0, 0, 250, 70, "{in_use_col_bg}"]},
                      { "text": [0, 0, "{name}", "Signika-SB.ttf", "{fil_txt_col}", 0, 15] },
@@ -105,7 +114,7 @@ TEMPLATES = {
                      { "text": [245, 90, "{pct}%", "Signika-SB.ttf", "white", 2, 20] },
                      { "bars": [115, 90, 80, 20, "white", "{pct}"] },
                      { "vars": {"pct": "100", "color": "white", "fil": "PLA", "type": "?", "name": "AMS", "in_use_col_bg" : "white", "fil_txt_col": "black"}},
-                     { "size": {"width": 250, "height": 128 }}
+                     { "size": {"width": 250, "height": 122 }}
                    ],
  "AMS Tags 1" :    [{ "text": [250, 10, "{fil}", "fonts/calibrib100", "black", 1, 100] },
                     { "rbox": [-20, 160, 180, 116, 20, "black"] },
@@ -114,7 +123,7 @@ TEMPLATES = {
                     { "text": [490, 180, "{pct}%", "fonts/calibrib40", "white", 2, 40] },
                     { "bars": [230, 180, 160, 40, "white", "{pct}"] },
                     { "vars": {"pct": "100", "color": "white", "fil": "PLA" }},
-                    { "size": {"width": 500, "height": 256 }}
+                    { "size": {"width": 500, "height": 244 }}
                    ],
  "AMS Tags 2" :    [{ "box" : [0, 0, 250, 70, "{in_use_col_bg}"]},
                     { "text": [0, 0, "{name}", "fonts/calibrib15", "{fil_txt_col}", 0, 15] },
@@ -126,21 +135,21 @@ TEMPLATES = {
                     { "text": [245, 90, "{pct}%", "fonts/calibrib20", "white", 2, 20] },
                     { "bars": [115, 90, 80, 20, "white", "{pct}"] },
                     { "vars": {"pct": "100", "color": "white", "fil": "PLA", "type": "?", "name": "AMS", "in_use_col_bg" : "white", "fil_txt_col": "black"}},
-                    { "size": {"width": 250, "height": 128 }}
+                    { "size": {"width": 250, "height": 122 }}
                    ],
  "Rack Tags" :     [{ "text": [0,0,"{name}","fonts/Signika-SB.ttf","black",0,15]},
                     { "text": [125,15,"{txt}","fonts/Signika-SB.ttf","black",1,50]},
                     { "box" : [0,80,250,58,"red"]},
                     { "text": [250,90,"{type}","fonts/Signika-SB.ttf","white",2,20]},
                     { "vars": {"name": "Rack", "txt" : "Open Racks", "type": "Sindoh PLA"}},
-                    { "size": {"width": 250, "height": 128 }}
+                    { "size": {"width": 250, "height": 122 }}
                    ],
 "Rack Tags BWRY" : [{ "text": [0,0,"{name}","fonts/Signika-SB.ttf","black",0,15]},
                     { "text": [125,15,"{txt}","fonts/Signika-SB.ttf","black",1,50]},
                     { "box" : [0,80,250,58,"yellow"]},
                     { "text": [250,90,"{type}","fonts/Signika-SB.ttf","black",2,20]},
                     { "vars": {"name": "Rack", "txt" : "Open Racks", "type": "Sindoh PLA"}},
-                    { "size": {"width": 250, "height": 128 }}
+                    { "size": {"width": 250, "height": 122 }}
                    ]
 }
 
@@ -787,7 +796,7 @@ class TAG(UserDict):
                                  { "text": [245, 90, "{pct}%", "Signika-SB.ttf", "white", 2, 20] },
                                  { "bars": [115, 90, 80, 20, "white","{pct}"] },
                                  { "vars": {"pct": "100", "color": "White", "fil": "PLA"} }, #defaults
-                                 { "size": {"width": 250, "height": 128 }},
+                                 { "size": {"width": 250, "height": 122 }},
                                  {"template": "AMS Tags"}] 
         self.load_templates()
         
@@ -817,6 +826,8 @@ class TAG(UserDict):
                 skip = False
                 for line in vals:
                     values = next(iter(line.values()))
+                    if not isinstance(values, list):
+                        continue
                     if any(['yellow' in item.lower() for item in values if isinstance(item, str)]):
                         skip = True
                 if not skip:
@@ -854,15 +865,23 @@ class TAG(UserDict):
         return key, value
                                  
     def get_size(self):
+        '''Raw buffer dimensions from the tag DB — used for image decoding.'''
         width = self.data.get("width")
         height = self.data.get("height")
         return width, height
+
+    def get_display_size(self):
+        '''Visible display dimensions — applies DISPLAY_SIZE_OVERRIDES for template scaling.'''
+        hw_type = self.data.get("hw_type")
+        overrides = DISPLAY_SIZE_OVERRIDES.get(hw_type, {})
+        width, height = self.get_size()
+        return overrides.get('width', width), overrides.get('height', height)
         
     def scale_template(self, template):
         '''
         Return a scaled copy of template without mutating inputs.
         '''
-        width, height = self.get_size()
+        width, height = self.get_display_size()
 
         # Find template size
         size_line = get_value_from_template('size', template)

@@ -210,6 +210,38 @@ Built-in templates:
 
 ---
 
+## Tag hardware notes
+
+### 2.13" display height (250×122 vs 250×128)
+
+Several 2.13" tag types (confirmed: Gicisky BWR hw_type 177, Wolink BWRY hw_type 210) have a raw image buffer of 250×128 but a physical display of only 250×122 — the bottom 6 pixels of the buffer are never shown.
+
+The tag database reports 128 as the height, which would cause template scaling to stretch content vertically by 6 pixels. To compensate, all 250-wide templates use a design height of **122**, and a Python-side override (`DISPLAY_SIZE_OVERRIDES` in `OpenEPaper.py`) maps any affected hw_type to its true display height for scaling purposes, while keeping the raw buffer size intact for image decoding.
+
+If you add a new 2.13" tag type with the same quirk, add its hw_type to `DISPLAY_SIZE_OVERRIDES`:
+
+```python
+DISPLAY_SIZE_OVERRIDES = {
+    177: {'height': 122},   # Gicisky BLE EPD BWR 2.13"
+    # add new entries here
+}
+```
+
+### Rotation
+
+The `rotate` element in a template takes values 0–3, where:
+
+| Value | Effect |
+|---|---|
+| 0 | Normal |
+| 1 | 90° CW |
+| 2 | 180° (upside down) |
+| 3 | 90° CCW |
+
+Rotation support is **tag hardware dependent**. Most 2.13" tags (Gicisky, Wolink) only support 0° and 180° — values 1 and 3 produce undefined results on these tags.
+
+---
+
 ## AP requirements
 
 - An [OpenEPaperLink](https://github.com/NickWaterton/OpenEPaperLink) AP with BLE support (the NickWaterton fork)

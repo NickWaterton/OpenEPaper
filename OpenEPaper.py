@@ -1034,7 +1034,7 @@ class TAG(UserDict):
         make wolink image case_width pixels taller than the tag image
         tag image will be pasted over this image
         '''
-        case_img = Image.new('RGB', (width+(2*case_width), height+6), color="white")    # make white image code_height pixels wider than tag image
+        case_img = Image.new('RGB', (width+(2*case_width), height), color="white")    # make white image code_height pixels wider than tag image
         draw = ImageDraw.Draw(case_img)
         draw.rectangle([7, 8, 15, 18], fill="blue", outline="black", width=1)  # draw LED
         return case_img
@@ -1096,13 +1096,15 @@ class TAG(UserDict):
                     pixel_index += 1
 
         tag = Image.fromarray(img)
+        width, height = self.get_display_size()
+        tag_border = 30 # left/right white space on tag
         if hw_type in range(176, 187):  # Gicisky
-            bar_code_background = self.make_bar_code_image(width, height, 30)
-            bar_code_background.paste(tag, (30, 0))
+            bar_code_background = self.make_bar_code_image(width, height, tag_border)
+            bar_code_background.paste(tag, (tag_border, 0))
             tag = bar_code_background
         elif is_bwry: # Wolink
-            background = self.make_wolink_image(width, height, 30)
-            background.paste(tag, (30, 0))
+            background = self.make_wolink_image(width, height, tag_border)
+            background.paste(tag, (tag_border, 0))
             tag = background
         tag.save(filename)
         self.log.info(f'wrote image {filename}')

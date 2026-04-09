@@ -85,7 +85,7 @@
 {% endmacro %}
 {% macro render_tag(mac, values, templates) %}
   <div class="col"  id="tag-{{ mac }}">
-    <button type="button" class="btn bg-white border" data-bs-toggle="modal" data-bs-target="#Modal-{{ mac }}">
+    <button type="button" class="btn bg-white border px-2 py-2" data-bs-toggle="modal" data-bs-target="#Modal-{{ mac }}">
       <img class="img-fluid" data-mac="{{ mac }}" data-version="{{ values.version }}" src="{{ url_for('static',filename=mac + '.jpg') }}?v={{ values.version }}" alt="{{ mac }}" >
     </button>
     {{ render_modal(mac, values, templates, "modal-lg") }}

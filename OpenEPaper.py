@@ -145,7 +145,7 @@ TEMPLATES = {
                     { "size": {"width": 250, "height": 122 }}
                    ],
 "Rack Tags BWRY" : [{ "text": [0,0,"{name}","fonts/Signika-SB.ttf","black",0,15]},
-                    { "text": [125,15,"{txt}","fonts/Signika-SB.ttf","black",1,50]},
+                    { "text": [125,15,"{txt}","fonts/Signika-SB.ttf","black",1,47]},
                     { "box" : [0,80,250,58,"yellow"]},
                     { "text": [250,90,"{type}","fonts/Signika-SB.ttf","black",2,20]},
                     { "vars": {"name": "Rack", "txt" : "Open Racks", "type": "Sindoh PLA"}},
@@ -1001,8 +1001,6 @@ class TAG(UserDict):
         make bar code image code_height pixels taller than the tag image (because it will be rotated 90 degrees)
         tag image will be pasted over this image
         '''
-        white = (255, 255, 255)
-        black = (0, 0, 0)
         def get_next_number(s, index=0):
             while True and s:
                 char = s[(index:= index+1) % len(s)]    # Use modulo operator for wrapping
@@ -1010,7 +1008,7 @@ class TAG(UserDict):
                     yield max(2,int(char)//1.3)
             
         bar_code_txt = self.insert_separator(self.mac[-8:], '.')
-        bar_code_img = Image.new('RGB', (height, width+code_height), color=white)    # make whtite image code_height pixels taller than tag image
+        bar_code_img = Image.new('RGB', (height, width+(2*code_height)), color="white")    # make white image code_height pixels taller than tag image
         draw = ImageDraw.Draw(bar_code_img)
         font = ImageFont.load_default()
         # get text size
@@ -1018,7 +1016,7 @@ class TAG(UserDict):
         text_width = bbox[2] - bbox[0]
         text_height = bbox[3] - bbox[1]
         # The text() method takes the position (xy - top left), the text string, the color (black), and the font. start with text centred + current_x/2
-        draw.text(((height/2-text_width/2)+10, code_height-text_height-code_height//3), bar_code_txt, fill=black, font=font)
+        draw.text(((height/2-text_width/2)+10, code_height-text_height-code_height//3), bar_code_txt, fill="black", font=font)
         # draw fake bar code
         next_num = get_next_number(self.mac)
         bar_height = code_height//3
@@ -1026,10 +1024,20 @@ class TAG(UserDict):
         while current_x < height:
             bar_width = next(next_num)
             space_width = next(next_num)
-            draw.rectangle([current_x, 0, current_x + bar_width, bar_height], fill=black)
+            draw.rectangle([current_x, 0, current_x + bar_width, bar_height], fill="black")
             current_x += bar_width + space_width
         bar_code_img = bar_code_img.transpose(Image.ROTATE_270) #rotate 90 degrees clockwise
         return bar_code_img
+    
+    def make_wolink_image(self, width, height, case_width=30):
+        '''
+        make wolink image case_width pixels taller than the tag image
+        tag image will be pasted over this image
+        '''
+        case_img = Image.new('RGB', (width+(2*case_width), height+6), color="white")    # make white image code_height pixels wider than tag image
+        draw = ImageDraw.Draw(case_img)
+        draw.rectangle([7, 8, 15, 18], fill="blue", outline="black", width=1)  # draw LED
+        return case_img
         
     def save_jpg_img(self, data, current):
         '''
@@ -1088,13 +1096,15 @@ class TAG(UserDict):
                     pixel_index += 1
 
         tag = Image.fromarray(img)
-        if hw_type == 177:
-            bar_code_background = self.make_bar_code_image(width, height)
-            bar_code_background.paste(tag, (0, 0))
-            #bar_code_background = bar_code_background.resize((width, height), Image.LANCZOS)
-            bar_code_background.save(filename)
-        else:
-            tag.save(filename)
+        if hw_type in range(176, 187):  # Gicisky
+            bar_code_background = self.make_bar_code_image(width, height, 30)
+            bar_code_background.paste(tag, (30, 0))
+            tag = bar_code_background
+        elif is_bwry: # Wolink
+            background = self.make_wolink_image(width, height, 30)
+            background.paste(tag, (30, 0))
+            tag = background
+        tag.save(filename)
         self.log.info(f'wrote image {filename}')
         
     def make_bars(self, v_list, vars=None):
